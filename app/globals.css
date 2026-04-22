@@ -1,0 +1,120 @@
+@import "tailwindcss";
+
+@variant dark (&:where(.dark, .dark *));
+
+@layer base {
+    body {
+        @apply transition-colors duration-300 ease-in-out;
+    }
+
+    *,
+    ::before,
+    ::after {
+        @apply transition-colors duration-300 ease-in-out;
+    }
+}
+
+@layer utilities {
+    .animate-fade-in {
+        animation: fadeIn 0.4s ease-out forwards;
+    }
+
+    .animate-fade-in-up {
+        animation: fadeInUp 0.4s ease-out forwards;
+    }
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+    }
+
+    to {
+        opacity: 1;
+    }
+}
+
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Markdown Styling */
+.prose {
+    @apply max-w-none;
+}
+
+.prose pre {
+    @apply bg-zinc-50 dark:bg-zinc-900/50 border border-zinc-200 dark:border-zinc-800 rounded-2xl my-6 overflow-hidden shadow-sm;
+}
+
+.prose code {
+    @apply font-mono text-sm px-1.5 py-0.5 rounded-md bg-zinc-100 dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100;
+}
+
+.prose pre code {
+    @apply bg-transparent p-0 text-inherit block;
+}
+
+.prose p {
+    @apply mb-4 last:mb-0;
+}
+
+.prose ul {
+    @apply list-disc list-inside mb-4 space-y-1 ml-4;
+}
+
+.prose ol {
+    @apply list-decimal list-inside mb-4 space-y-1 ml-4;
+}
+
+.prose li {
+    @apply text-zinc-700 dark:text-zinc-300;
+}
+
+.prose table {
+    @apply w-full border-collapse mb-6;
+}
+
+.prose th,
+.prose td {
+    @apply border border-zinc-200 dark:border-zinc-800 px-4 py-2 text-left;
+}
+
+.prose th {
+    @apply bg-zinc-50 dark:bg-zinc-900 font-semibold;
+}
+
+.prose h1,
+.prose h2,
+.prose h3,
+.prose h4 {
+    @apply font-bold text-zinc-900 dark:text-zinc-100 mt-8 mb-4 first:mt-0;
+}
+
+.prose h1 {
+    @apply text-2xl;
+}
+
+.prose h2 {
+    @apply text-xl;
+}
+
+.prose h3 {
+    @apply text-lg;
+}
+
+.prose a {
+    @apply text-blue-500 hover:text-blue-600 underline underline-offset-4 decoration-2;
+}
+
+.prose blockquote {
+    @apply border-l-4 border-zinc-200 dark:border-zinc-800 pl-4 py-1 my-6 italic text-zinc-500 dark:text-zinc-400;
+}
