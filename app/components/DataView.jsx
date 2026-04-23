@@ -1,7 +1,13 @@
-import React, { useState, useEffect } from 'react';
-import { Database, Server, Loader2, Eye, Columns3, Rows3 } from 'lucide-react';
+'use client';
+
+import React, { useEffect, useState } from 'react';
+import { Columns3, Database, Eye, Loader2, Rows3, Server } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import FilePreviewModal from './FilePreviewModal';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Skeleton } from '@/components/ui/skeleton';
 
 const DataView = () => {
     const [tables, setTables] = useState([]);
@@ -26,19 +32,18 @@ const DataView = () => {
 
             if (error) throw error;
 
-            // Group columns by table
             const groupedTables = new Map();
             data?.forEach((row) => {
                 const tableName = row.table_name;
                 if (!groupedTables.has(tableName)) {
                     groupedTables.set(tableName, {
                         name: tableName,
-                        columns: []
+                        columns: [],
                     });
                 }
                 groupedTables.get(tableName).columns.push({
                     name: row.column_name,
-                    type: row.column_type
+                    type: row.column_type,
                 });
             });
 
@@ -56,7 +61,6 @@ const DataView = () => {
         setSelectedTableName(table.name);
 
         try {
-            // Fetch first 25 rows from the table for preview
             const { data, error } = await supabase
                 .from(table.name)
                 .select('*')
@@ -65,8 +69,8 @@ const DataView = () => {
             if (error) throw error;
 
             setPreviewData({
-                columns: table.columns.map(col => col.name),
-                rows: data || []
+                columns: table.columns.map((col) => col.name),
+                rows: data || [],
             });
         } catch (err) {
             console.error('Preview error:', err);
@@ -77,64 +81,134 @@ const DataView = () => {
     };
 
     return (
-        <div className="flex-1 flex flex-col h-full animate-fade-in w-full pb-20 pt-8">
-            <div className="max-w-3xl mx-auto w-full px-6 md:px-8">
-                <div className="mb-10">
-                    <h1 className="text-3xl font-semibold tracking-tight text-zinc-900 dark:text-white mb-2">Available Data</h1>
-                    <p className="text-zinc-500 dark:text-zinc-400">Browse your database tables and preview the data to get ideas for your queries.</p>
+        <div className="flex-1 overflow-y-auto bg-muted/30 p-6 md:p-10 animate-fade-in custom-scrollbar">
+            <div className="mx-auto max-w-5xl space-y-6">
+                <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+                    <div className="space-y-2">
+                        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                            Data sources
+                        </p>
+                        <h1 className="text-3xl font-semibold tracking-tight text-foreground">
+                            Available Data
+                        </h1>
+                        <p className="max-w-2xl text-sm text-muted-foreground">
+                            Browse your database tables and preview records before you build a query.
+                        </p>
+                    </div>
+
                 </div>
 
-                <div className="space-y-3">
-                    <h2 className="text-xs font-bold uppercase tracking-widest text-zinc-400 mb-4 ml-1">Database Tables</h2>
-
-                    {isLoading ? (
-                        <div className="flex flex-col items-center justify-center py-12 text-zinc-400">
-                            <Loader2 size={24} className="animate-spin mb-2" />
-                            <span className="text-sm">Loading tables...</span>
-                        </div>
-                    ) : error ? (
-                        <div className="p-10 rounded-3xl border border-red-200 dark:border-red-800/30 bg-red-50 dark:bg-red-900/10 flex flex-col items-center">
-                            <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
-                        </div>
-                    ) : tables.length === 0 ? (
-                        <div className="p-10 rounded-3xl border border-dashed border-zinc-200 dark:border-zinc-800 flex flex-col items-center justify-center text-center">
-                            <Database size={32} className="text-zinc-300 dark:text-zinc-700 mb-4" />
-                            <p className="text-sm text-zinc-500">No database tables available.</p>
-                        </div>
-                    ) : (
-                        tables.map((table) => (
-                            <div onClick={() => handlePreviewTable(table)} key={table.name} className="flex items-center justify-between p-4 rounded-2xl bg-zinc-50 dark:bg-white/5 border border-transparent hover:border-zinc-200 dark:hover:border-white/10 transition-all group">
-                                <div className="flex items-center gap-4 flex-1">
-                                    <div className="w-10 h-10 rounded-xl bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 flex items-center justify-center shadow-sm">
-                                        <Server size={18} className="text-emerald-500" />
-                                    </div>
-                                    <div className="flex flex-col flex-1">
-                                        <span className="font-medium text-sm text-zinc-900 dark:text-zinc-100">{table.name}</span>
-                                        <div className="flex items-center gap-2 text-[10px] text-zinc-500 uppercase tracking-tight mt-1">
-                                            <Columns3 size={12} />
-                                            <span>{table.columns.length} columns</span>
-                                        </div>
-                                    </div>
-                                </div>
-                                <button
-                                    onClick={() => handlePreviewTable(table)}
-                                    className="p-2 text-zinc-400 hover:text-blue-500 transition-colors opacity-0 group-hover:opacity-100"
-                                    title="Preview table data"
-                                >
-                                    <Eye size={16} />
-                                </button>
+                <Card>
+                    <CardHeader className="space-y-4 border-b border-border bg-muted/20">
+                        <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+                            <div>
+                                <CardTitle className="flex items-center gap-2">
+                                    <Database className="size-5 text-primary" />
+                                    Database Tables
+                                </CardTitle>
+                                <CardDescription>
+                                    Browse each table and preview the first 25 rows.
+                                </CardDescription>
                             </div>
-                        ))
-                    )}
-                </div>
+                        </div>
+                    </CardHeader>
+
+                    <CardContent className="p-4 md:p-6">
+                        {isLoading ? (
+                            <div className="space-y-3">
+                                {Array.from({ length: 4 }).map((_, index) => (
+                                    <div
+                                        key={index}
+                                        className="flex items-center justify-between gap-4 rounded-xl border border-border bg-card p-4"
+                                    >
+                                        <div className="flex items-center gap-4">
+                                            <Skeleton className="size-10 rounded-xl" />
+                                            <div className="space-y-2">
+                                                <Skeleton className="h-4 w-44" />
+                                                <Skeleton className="h-3 w-24" />
+                                            </div>
+                                        </div>
+                                        <Skeleton className="h-9 w-24 rounded-lg" />
+                                    </div>
+                                ))}
+                            </div>
+                        ) : error ? (
+                            <div className="flex min-h-56 flex-col items-center justify-center rounded-xl border border-red-200 bg-red-50 px-6 py-12 text-center dark:border-red-900/30 dark:bg-red-900/10">
+                                <p className="text-sm font-medium text-red-700 dark:text-red-400">{error}</p>
+                            </div>
+                        ) : tables.length === 0 ? (
+                            <div className="flex min-h-56 flex-col items-center justify-center rounded-xl border border-dashed border-border bg-background px-6 py-12 text-center">
+                                <div className="mb-4 flex size-12 items-center justify-center rounded-full bg-muted text-muted-foreground">
+                                    <Rows3 className="size-5" />
+                                </div>
+                                <h3 className="text-base font-semibold text-foreground">No database tables available</h3>
+                                <p className="mt-2 max-w-sm text-sm text-muted-foreground">
+                                    Wait for your schema registry to populate.
+                                </p>
+                            </div>
+                        ) : (
+                            <div className="space-y-3">
+                                {tables.map((table) => (
+                                    <div
+                                        key={table.name}
+                                        role="button"
+                                        tabIndex={0}
+                                        onClick={() => handlePreviewTable(table)}
+                                        onKeyDown={(event) => {
+                                            if (event.key === 'Enter' || event.key === ' ') {
+                                                event.preventDefault();
+                                                handlePreviewTable(table);
+                                            }
+                                        }}
+                                        className="group flex cursor-pointer items-center justify-between gap-4 rounded-xl border border-border bg-card p-4 transition-all hover:border-primary/30 hover:bg-muted/40 hover:shadow-sm"
+                                    >
+                                        <div className="flex min-w-0 flex-1 items-center gap-4">
+                                            <div className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                                                <Server className="size-5" />
+                                            </div>
+
+                                            <div className="min-w-0 flex-1">
+                                                <div className="flex items-center gap-2">
+                                                    <h3 className="truncate text-sm font-semibold text-foreground">
+                                                        {table.name}
+                                                    </h3>
+                                                    <span className="inline-flex items-center rounded-full border border-border bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+                                                        {table.columns.length} columns
+                                                    </span>
+                                                </div>
+                                                <p className="mt-1 text-xs text-muted-foreground">
+                                                    Preview the first 25 rows and inspect the schema.
+                                                </p>
+                                            </div>
+                                        </div>
+
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            size="sm"
+                                            className="shrink-0 gap-2"
+                                            onClick={(event) => {
+                                                event.stopPropagation();
+                                                handlePreviewTable(table);
+                                            }}
+                                        >
+                                            <Eye className="size-4" />
+                                            Preview
+                                        </Button>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </CardContent>
+                </Card>
             </div>
 
             {isPreviewLoading && (
                 <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/20 backdrop-blur-[2px]">
-                    <div className="bg-white dark:bg-zinc-900 p-6 rounded-3xl shadow-xl border border-zinc-200 dark:border-zinc-800 flex items-center gap-4">
-                        <Loader2 className="animate-spin text-blue-500" size={24} />
-                        <span className="font-medium text-zinc-700 dark:text-zinc-300">Loading preview...</span>
-                    </div>
+                    <Card className="flex items-center gap-4 px-6 py-5 shadow-xl">
+                        <Loader2 className="size-6 animate-spin text-primary" />
+                        <span className="font-medium text-foreground">Loading preview...</span>
+                    </Card>
                 </div>
             )}
 
