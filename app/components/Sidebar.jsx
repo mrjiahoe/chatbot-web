@@ -1,6 +1,10 @@
 'use client';
 import React, { useState } from 'react';
 import { MessageSquare, Database, Settings, HelpCircle, Plus, ChartNoAxesCombined, User, Palette, Clock, ChevronLeft, ChevronRight, FileText, Menu, X, LogOut } from 'lucide-react';
+import { Button } from './ui/button';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip';
+import { ScrollArea } from './ui/scroll-area';
+import { Separator } from './ui/separator';
 
 const Sidebar = ({ activeTab, setActiveTab, onNewChat, onSelectChat, recentChats, activeChatId, onLogout, user, profile }) => {
     const [isExpanded, setIsExpanded] = useState(false);
@@ -17,17 +21,20 @@ const Sidebar = ({ activeTab, setActiveTab, onNewChat, onSelectChat, recentChats
     };
 
     return (
-        <aside
-            className={`flex flex-col py-6 h-screen transition-all duration-300 ease-in-out bg-white dark:bg-zinc-950 shrink-0 border-r border-black/5 dark:border-white/5 z-20 relative ${isExpanded ? 'w-64 px-4' : 'w-16 md:w-20 items-center'}`}
-        >
-            {/* Toggle Button */}
-            <button
-                onClick={toggleSidebar}
-                className="absolute -right-3 top-16 w-8 h-8 rounded-full bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 flex items-center justify-center text-zinc-500 hover:text-black dark:hover:text-white shadow-lg z-[999] transition-all hover:scale-110 active:scale-95"
-                title={isExpanded ? "Collapse Sidebar" : "Expand Sidebar"}
+        <TooltipProvider>
+            <aside
+                className={`flex flex-col py-6 h-screen transition-all duration-300 ease-in-out bg-white dark:bg-zinc-950 shrink-0 border-r border-black/5 dark:border-white/5 z-20 relative ${isExpanded ? 'w-64 px-4' : 'w-16 md:w-20 items-center'}`}
             >
-                {isExpanded ? <X size={16} /> : <Menu size={16} />}
-            </button>
+                {/* Toggle Button */}
+                <Button
+                    onClick={toggleSidebar}
+                    variant="ghost"
+                    size="icon"
+                    className="absolute -right-3 top-16 w-8 h-8 rounded-full bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 shadow-lg z-[999] transition-all hover:scale-110 active:scale-95"
+                    title={isExpanded ? "Collapse Sidebar" : "Expand Sidebar"}
+                >
+                    {isExpanded ? <X size={16} /> : <Menu size={16} />}
+                </Button>
 
             {/* Logo area */}
             <div className={`mb-8 flex items-center ${isExpanded ? 'px-2 gap-3' : 'justify-center'}`}>
@@ -40,89 +47,108 @@ const Sidebar = ({ activeTab, setActiveTab, onNewChat, onSelectChat, recentChats
             </div>
 
             {/* New Chat Button */}
-            <button
-                onClick={onNewChat}
-                className={`flex items-center rounded-full bg-white dark:bg-zinc-900 text-zinc-700 dark:text-zinc-200 border border-zinc-200 dark:border-zinc-800 hover:shadow-md hover:-translate-y-0.5 transition-all mb-6 group overflow-hidden ${isExpanded ? 'w-full px-4 py-2.5 gap-3' : 'w-10 h-10 justify-center'}`}
-            >
-                <Plus size={20} className="shrink-0" />
-                {isExpanded && (
+            {isExpanded ? (
+                <Button
+                    onClick={onNewChat}
+                    variant="outline"
+                    className="w-full justify-start gap-3 mb-6"
+                >
+                    <Plus size={20} />
                     <span className="font-medium animate-fade-in whitespace-nowrap">New Chat</span>
-                )}
-                {!isExpanded && (
-                    <div className="absolute left-16 bg-black text-white text-[10px] px-2 py-1 rounded opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity whitespace-nowrap z-50">
-                        New Chat
-                    </div>
-                )}
-            </button>
-            <div className={`h-0.5 bg-zinc-200 dark:bg-zinc-800 transition-all duration-300 ${isExpanded ? 'w-full mb-6' : 'w-8 mb-6'}`} />
+                </Button>
+            ) : (
+                <Tooltip>
+                    <TooltipTrigger asChild>
+                        <Button
+                            onClick={onNewChat}
+                            variant="outline"
+                            size="icon"
+                            className="w-10 h-10 mb-6"
+                        >
+                            <Plus size={20} />
+                        </Button>
+                    </TooltipTrigger>
+                    <TooltipContent side="right">New Chat</TooltipContent>
+                </Tooltip>
+            )}
+            <Separator className={isExpanded ? 'w-full mb-6' : 'w-8 mb-6'} />
 
             {/* Main Navigation */}
             <nav className={`flex flex-col space-y-2 mb-4 ${isExpanded ? '' : 'items-center'}`}>
                 {mainMenuItems.map((item) => {
                     const isActive = activeTab === item.id;
-                    return (
-                        <button
+                    return isExpanded ? (
+                        <Button
                             key={item.id}
                             onClick={() => setActiveTab(item.id)}
-                            className={`flex items-center rounded-xl transition-all group relative ${isExpanded ? 'w-full px-3 py-2.5 gap-4' : 'w-10 h-10 justify-center'} ${isActive
-                                ? 'bg-black text-white dark:bg-white dark:text-black shadow-md'
-                                : 'text-zinc-700 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-black/5 dark:hover:bg-white/10'
-                                }`}
+                            variant={isActive ? 'default' : 'ghost'}
+                            className={`w-full justify-start gap-4 ${isActive ? 'shadow-md' : ''}`}
                         >
-                            <item.icon size={20} strokeWidth={isActive ? 2.5 : 2} className="shrink-0" />
-                            {isExpanded && (
-                                <span className={`font-medium animate-fade-in whitespace-nowrap ${isActive ? 'text-white dark:text-black' : ''}`}>
-                                    {item.label}
-                                </span>
-                            )}
-                            {!isExpanded && (
-                                <div className="absolute left-16 bg-black text-white text-[10px] px-2 py-1 rounded opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity whitespace-nowrap z-50">
-                                    {item.label}
-                                </div>
-                            )}
-                        </button>
+                            <item.icon size={20} strokeWidth={isActive ? 2.5 : 2} />
+                            <span className="font-medium animate-fade-in whitespace-nowrap">{item.label}</span>
+                        </Button>
+                    ) : (
+                        <Tooltip key={item.id}>
+                            <TooltipTrigger asChild>
+                                <Button
+                                    onClick={() => setActiveTab(item.id)}
+                                    variant={isActive ? 'default' : 'ghost'}
+                                    size="icon"
+                                    className={`w-10 h-10 ${isActive ? 'shadow-md' : ''}`}
+                                >
+                                    <item.icon size={20} strokeWidth={isActive ? 2.5 : 2} />
+                                </Button>
+                            </TooltipTrigger>
+                            <TooltipContent side="right">{item.label}</TooltipContent>
+                        </Tooltip>
                     );
                 })}
 
                 {/* History Toggler / Section */}
                 {!isExpanded ? (
-                    <button
-                        onClick={() => setActiveTab('HistoryList')}
-                        className={`flex items-center rounded-xl transition-all group relative w-10 h-10 justify-center ${activeTab === 'HistoryList'
-                            ? 'bg-black text-white dark:bg-white dark:text-black shadow-md'
-                            : 'text-zinc-700 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-black/5 dark:hover:bg-white/10'
-                            }`}
-                    >
-                        <Clock size={20} strokeWidth={activeTab === 'HistoryList' ? 2.5 : 2} className="shrink-0" />
-                        <div className="absolute left-16 bg-black text-white text-[10px] px-2 py-1 rounded opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity whitespace-nowrap z-50">
-                            History
-                        </div>
-                    </button>
+                    <Tooltip>
+                        <TooltipTrigger asChild>
+                            <Button
+                                onClick={() => setActiveTab('HistoryList')}
+                                variant={activeTab === 'HistoryList' ? 'default' : 'ghost'}
+                                size="icon"
+                                className={`w-10 h-10 ${activeTab === 'HistoryList' ? 'shadow-md' : ''}`}
+                            >
+                                <Clock size={20} strokeWidth={activeTab === 'HistoryList' ? 2.5 : 2} />
+                            </Button>
+                        </TooltipTrigger>
+                        <TooltipContent side="right">History</TooltipContent>
+                    </Tooltip>
                 ) : (
                     <>
-                        <div className="h-0.5 bg-zinc-200 dark:bg-zinc-800 w-full my-6" />
+                        <Separator className="w-full my-6" />
                         <div className="flex-1 flex flex-col min-h-0 animate-fade-in">
                             <div className="flex items-center justify-between px-3 mb-3">
                                 <span className="text-[11px] font-bold uppercase tracking-widest text-zinc-600 dark:text-zinc-400">History</span>
-                                <button
+                                <Button
                                     onClick={() => setActiveTab('HistoryList')}
-                                    className="text-[10px] font-medium text-zinc-700 dark:text-zinc-500 hover:text-black dark:hover:text-white transition-colors"
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-auto px-1 py-0 text-[10px] font-medium text-zinc-700 dark:text-zinc-500 hover:text-black dark:hover:text-white"
                                 >
                                     View more
-                                </button>
+                                </Button>
                             </div>
-                            <div className="overflow-y-auto space-y-1 flex-1 pr-1 custom-scrollbar">
-                                {recentChats.map((chat) => (
-                                    <button
-                                        key={chat.id}
-                                        onClick={() => onSelectChat(chat.id)}
-                                        className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-all group text-left ${activeChatId === chat.id ? 'bg-black/5 dark:bg-white/5 text-black dark:text-white font-medium' : 'text-zinc-700 dark:text-zinc-500 hover:text-black dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/5'}`}
-                                    >
-                                        <FileText size={14} className={`shrink-0 transition-opacity ${activeChatId === chat.id ? 'opacity-100' : 'opacity-40 group-hover:opacity-100'}`} />
-                                        <span className="truncate">{chat.title}</span>
-                                    </button>
-                                ))}
-                            </div>
+                            <ScrollArea className="flex-1 pr-3">
+                                <div className="space-y-1">
+                                    {recentChats.map((chat) => (
+                                        <Button
+                                            key={chat.id}
+                                            onClick={() => onSelectChat(chat.id)}
+                                            variant={activeChatId === chat.id ? 'secondary' : 'ghost'}
+                                            className={`w-full justify-start gap-3 text-left h-auto px-3 py-2 ${activeChatId === chat.id ? 'font-medium' : ''}`}
+                                        >
+                                            <FileText size={14} className={`shrink-0 transition-opacity ${activeChatId === chat.id ? 'opacity-100' : 'opacity-40'}`} />
+                                            <span className="truncate text-sm">{chat.title}</span>
+                                        </Button>
+                                    ))}
+                                </div>
+                            </ScrollArea>
                         </div>
                     </>
                 )}
@@ -174,17 +200,19 @@ const Sidebar = ({ activeTab, setActiveTab, onNewChat, onSelectChat, recentChats
                             <span className="text-[10px] text-zinc-700 dark:text-zinc-500 truncate uppercase tracking-wider">{profile?.username ? `@${profile.username}` : user?.email || 'Free Plan'}</span>
                         </div>
                     )}
-                    {isExpanded && (
-                        <button
+                {isExpanded && (
+                        <Button
                             onClick={(e) => {
                                 e.stopPropagation();
                                 onLogout();
                             }}
-                            className="p-2 text-zinc-400 hover:text-red-500 transition-colors"
+                            variant="ghost"
+                            size="icon"
+                            className="text-zinc-400 hover:text-red-500"
                             title="Sign out"
                         >
                             <LogOut size={16} />
-                        </button>
+                        </Button>
                     )}
 
                     {/* User Menu Dropdown */}
@@ -207,34 +235,37 @@ const Sidebar = ({ activeTab, setActiveTab, onNewChat, onSelectChat, recentChats
                                     </div>
                                 </div>
                                 <div className="py-1">
-                                    <button
+                                    <Button
                                         onClick={() => {
                                             setActiveTab('Help');
                                             setShowUserMenu(false);
                                         }}
-                                        className="w-full flex items-center gap-3 px-3 py-2 text-sm text-zinc-700 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors"
+                                        variant="ghost"
+                                        className="w-full justify-start gap-3 h-auto px-3 py-2 text-zinc-700 dark:text-zinc-300"
                                     >
                                         <HelpCircle size={16} className="text-zinc-500" />
                                         <span>Help & Support</span>
-                                    </button>
-                                    <div className="h-px bg-zinc-100 dark:bg-zinc-800 my-1" />
-                                    <button
+                                    </Button>
+                                    <Separator />
+                                    <Button
                                         onClick={() => {
                                             onLogout();
                                             setShowUserMenu(false);
                                         }}
-                                        className="w-full flex items-center gap-3 px-3 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                                        variant="ghost"
+                                        className="w-full justify-start gap-3 h-auto px-3 py-2 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20"
                                     >
                                         <LogOut size={16} />
                                         <span>Sign out</span>
-                                    </button>
+                                    </Button>
                                 </div>
                             </div>
                         </>
                     )}
                 </div>
             </div>
-        </aside>
+            </aside>
+        </TooltipProvider>
     );
 };
 

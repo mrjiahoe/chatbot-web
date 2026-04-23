@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { LogOut, X, AlertCircle } from 'lucide-react';
+import { LogOut, X, Check } from 'lucide-react';
+import { Button } from './ui/button';
 
 const LogoutModal = ({ isOpen, onClose, onConfirm }) => {
     const [dontShowAgain, setDontShowAgain] = useState(false);
@@ -23,12 +24,14 @@ const LogoutModal = ({ isOpen, onClose, onConfirm }) => {
 
             {/* Modal */}
             <div className="relative bg-white dark:bg-zinc-900 w-full max-w-sm rounded-3xl shadow-2xl border border-zinc-200 dark:border-zinc-800 p-6 sm:p-8 animate-scale-in">
-                <button
+                <Button
                     onClick={onClose}
-                    className="absolute top-4 right-4 p-2 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 transition-colors"
+                    variant="ghost"
+                    size="icon"
+                    className="absolute top-4 right-4"
                 >
                     <X size={20} />
-                </button>
+                </Button>
 
                 <div className="flex flex-col items-center text-center">
                     <div className="w-16 h-16 rounded-full bg-red-50 dark:bg-red-900/20 flex items-center justify-center mb-6">
@@ -43,18 +46,22 @@ const LogoutModal = ({ isOpen, onClose, onConfirm }) => {
                     </p>
 
                     <div className="w-full space-y-3">
-                        <button
+                        <Button
                             onClick={handleConfirm}
-                            className="w-full py-3.5 bg-red-500 hover:bg-red-600 text-white rounded-2xl font-semibold transition-all shadow-lg shadow-red-500/20 active:scale-[0.98]"
+                            variant="destructive"
+                            size="lg"
+                            className="w-full"
                         >
                             Confirm Sign Out
-                        </button>
-                        <button
+                        </Button>
+                        <Button
                             onClick={onClose}
-                            className="w-full py-3.5 bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-200 rounded-2xl font-semibold transition-all active:scale-[0.98]"
+                            variant="outline"
+                            size="lg"
+                            className="w-full"
                         >
                             Cancel
-                        </button>
+                        </Button>
                     </div>
 
                     <div className="mt-6 flex items-center gap-2 group cursor-pointer" onClick={() => setDontShowAgain(!dontShowAgain)}>
@@ -70,21 +77,5 @@ const LogoutModal = ({ isOpen, onClose, onConfirm }) => {
         </div>
     );
 };
-
-const Check = ({ size, className }) => (
-    <svg
-        width={size}
-        height={size}
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="3"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        className={className}
-    >
-        <polyline points="20 6 9 17 4 12" />
-    </svg>
-);
 
 export default LogoutModal;
