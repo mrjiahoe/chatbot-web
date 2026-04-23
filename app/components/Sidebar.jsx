@@ -39,11 +39,11 @@ const Sidebar = ({ activeTab, setActiveTab, onNewChat, onSelectChat, recentChats
             <SidebarHeader className="gap-4 border-b border-sidebar-border p-4">
                 <div className="flex items-center gap-3 px-1">
                     <div className="flex size-10 items-center justify-center rounded-xl bg-sidebar-primary text-sidebar-primary-foreground shadow-sm">
-                        <ChartNoAxesCombined size={20} />
+                        <ChartNoAxesCombined size={25} />
                     </div>
                     <div className="grid min-w-0 flex-1 leading-tight transition-opacity duration-200 group-data-[collapsible=icon]/sidebar-wrapper:opacity-0">
-                        <span className="truncate text-sm font-semibold">NaLDAC</span>
-                        <span className="truncate text-xs text-sidebar-foreground/70">AI analysis workspace</span>
+                        <span className="truncate text-xl font-semibold">NaLDAC</span>
+                        <span className="truncate text-sm text-sidebar-foreground/70">AI analysis chatbot</span>
                     </div>
                 </div>
 
@@ -52,7 +52,7 @@ const Sidebar = ({ activeTab, setActiveTab, onNewChat, onSelectChat, recentChats
                         <SidebarMenuButton
                             onClick={onNewChat}
                             tooltip="New chat"
-                            className="bg-sidebar-primary text-sidebar-primary-foreground hover:bg-sidebar-primary/90 hover:text-sidebar-primary-foreground"
+                            className="text-sm bg-sidebar-primary text-sidebar-primary-foreground hover:bg-sidebar-primary/90 hover:text-sidebar-primary-foreground"
                         >
                             <Plus />
                             <span>New Chat</span>
