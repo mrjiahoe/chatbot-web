@@ -9,7 +9,6 @@ import {
     HelpCircle,
     LogOut,
     MessageSquare,
-    Palette,
     Plus,
     Settings,
     ChevronsUpDown,
@@ -155,10 +154,6 @@ const Sidebar = ({ activeTab, setActiveTab, onNewChat, onSelectChat, recentChats
                             </div>
                         </DropdownMenuLabel>
                         <DropdownMenuSeparator />
-                        <DropdownMenuItem onClick={() => setActiveTab('Personalization')}>
-                            <Palette />
-                            Appearance
-                        </DropdownMenuItem>
                         <DropdownMenuItem onClick={() => setActiveTab('Settings')}>
                             <Settings />
                             Settings

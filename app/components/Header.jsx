@@ -20,9 +20,8 @@ const Header = ({ theme, setTheme, chatTitle, activeChatId, onRenameChat, active
     const displayTitle = activeTab === 'Chat' ? chatTitle :
         activeTab === 'DataCenter' ? 'Data Sources' :
             activeTab === 'HistoryList' ? 'Chat History' :
-                activeTab === 'Personalization' ? 'Appearance' :
-                    activeTab === 'Settings' ? 'Settings' :
-                        activeTab === 'Help' ? 'Help & Support' : 'Dashboard';
+                activeTab === 'Settings' ? 'Settings' :
+                    activeTab === 'Help' ? 'Help & Support' : 'Dashboard';
 
     const isDark = theme === 'dark' || (theme === 'system' && typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches);
 

@@ -4,7 +4,6 @@ import Sidebar from './components/Sidebar';
 import Header from './components/Header';
 import ChatArea from './components/ChatArea';
 import ChatHistoryView from './components/ChatHistoryView';
-import PersonalizationView from './components/PersonalizationView';
 import SettingsView from './components/SettingsView';
 import HelpSupportView from './components/HelpSupportView';
 import DataView from './components/DataView';
@@ -74,7 +73,7 @@ export default function Page() {
   useEffect(() => {
     const savedTab = localStorage.getItem('activeTab');
     if (savedTab) {
-      setActiveTab(savedTab);
+      setActiveTab(savedTab === 'Personalization' ? 'Settings' : savedTab);
     }
   }, []);
 
@@ -316,13 +315,13 @@ export default function Page() {
                   onDeleteChat={handleDeleteChat}
                 />
               </div>
-            ) : activeTab === 'Personalization' ? (
-              <div className="flex-1 flex flex-col min-h-0 pt-4">
-                <PersonalizationView theme={theme} setTheme={setTheme} />
-              </div>
             ) : activeTab === 'Settings' ? (
               <div className="flex-1 flex flex-col min-h-0 pt-4">
-                <SettingsView onProfileUpdate={(newProfile) => setProfile(newProfile)} />
+                <SettingsView
+                  theme={theme}
+                  setTheme={setTheme}
+                  onProfileUpdate={(newProfile) => setProfile(newProfile)}
+                />
               </div>
             ) : activeTab === 'Help' ? (
               <div className="flex-1 flex flex-col min-h-0 pt-4">
