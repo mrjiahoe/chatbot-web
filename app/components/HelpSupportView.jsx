@@ -1,129 +1,220 @@
 'use client';
-import React, { useState } from 'react';
-import { Search, ChevronDown, ChevronUp, MessageCircle, Mail, FileText, ExternalLink } from 'lucide-react';
+
+import React, { useMemo, useState } from 'react';
+import {
+    ChevronDown,
+    ExternalLink,
+    FileText,
+    Mail,
+    MessageCircle,
+    Search,
+} from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import {
+    Card,
+    CardContent,
+    CardDescription,
+    CardHeader,
+    CardTitle,
+} from '@/components/ui/card';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { Input } from '@/components/ui/input';
+
+const faqs = [
+    {
+        id: 'upload-data',
+        question: 'How do I upload my own data?',
+        answer:
+            "Open the Data Sources tab in the sidebar, then use the Upload button to add a CSV, Excel, or JSON file.",
+    },
+    {
+        id: 'security',
+        question: 'Is my data secure?',
+        answer:
+            'Yes. Data is encrypted in transit and at rest, and your workspace is only accessible to your account.',
+    },
+    {
+        id: 'export-results',
+        question: 'Can I export the analysis results?',
+        answer:
+            'Yes. Use the export controls on a result to download it as a file or image, depending on the output type.',
+    },
+    {
+        id: 'reset-chat',
+        question: 'How do I reset a chat session?',
+        answer:
+            "Click New Chat in the sidebar to clear the current context and start a fresh conversation.",
+    },
+];
+
+const supportCards = [
+    {
+        icon: FileText,
+        title: 'Documentation',
+        description: 'Browse step-by-step guides and references for common tasks.',
+        accent: 'bg-blue-100 text-blue-600 dark:bg-blue-950/40 dark:text-blue-300',
+        action: 'Read docs',
+    },
+    {
+        icon: MessageCircle,
+        title: 'Community Forum',
+        description: 'See how other users approach similar workflows and questions.',
+        accent: 'bg-emerald-100 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-300',
+        action: 'Visit forum',
+    },
+    {
+        icon: Mail,
+        title: 'Contact Support',
+        description: 'Reach out when you need a more hands-on answer or account help.',
+        accent: 'bg-violet-100 text-violet-600 dark:bg-violet-950/40 dark:text-violet-300',
+        action: 'Send message',
+    },
+];
 
 const HelpSupportView = () => {
-    const [openFaqIndex, setOpenFaqIndex] = useState(null);
+    const [searchQuery, setSearchQuery] = useState('');
+    const [openFaqId, setOpenFaqId] = useState(null);
 
-    const faqs = [
-        {
-            question: "How do I upload my own data?",
-            answer: "You can upload data by navigating to the 'Data Sources' tab in the sidebar. Click on the 'Upload' button and select your CSV or Excel file. Supported formats include .csv, .xlsx, and .json."
-        },
-        {
-            question: "Is my data secure?",
-            answer: "Yes, we take security seriously. All data is encrypted at rest and in transit. We are fully compliant with SOC2 and GDPR standards. Your data is never shared with third parties without your explicit consent."
-        },
-        {
-            question: "Can I export the analysis results?",
-            answer: "Absolutely. Once the AI has generated an analysis or a chart, you can click the 'Export' icon in the top right corner of the message to download it as a PDF or image file."
-        },
-        {
-            question: "How do I reset a chat session?",
-            answer: "To start fresh, simply click the 'New Chat' button in the sidebar. This will clear the current context and allow you to begin a new analysis session."
+    const filteredFaqs = useMemo(() => {
+        const query = searchQuery.trim().toLowerCase();
+
+        if (!query) {
+            return faqs;
         }
-    ];
+
+        return faqs.filter((faq) => {
+            const question = faq.question.toLowerCase();
+            const answer = faq.answer.toLowerCase();
+            return question.includes(query) || answer.includes(query);
+        });
+    }, [searchQuery]);
 
     return (
-        <div className="flex-1 overflow-y-auto bg-gray-50 dark:bg-gray-900 p-8 animate-fade-in">
-            <div className="max-w-4xl mx-auto space-y-12">
-
-                {/* Header Section */}
-                <div className="text-center space-y-4">
-                    <h1 className="text-3xl font-bold text-gray-900 dark:text-white">How can we help you?</h1>
-                    <p className="text-lg text-gray-600 dark:text-gray-300">
-                        Search our knowledge base or get in touch with our support team.
+        <div className="flex-1 overflow-y-auto bg-muted/30 p-6 md:p-10 animate-fade-in custom-scrollbar">
+            <div className="mx-auto max-w-5xl space-y-6">
+                <div className="space-y-2">
+                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                        Support
                     </p>
-                    <div className="relative max-w-lg mx-auto mt-6">
-                        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
-                        <input
-                            type="text"
-                            placeholder="Search for answers..."
-                            className="w-full pl-10 pr-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none shadow-sm"
-                        />
-                    </div>
+                    <h1 className="text-3xl font-semibold tracking-tight text-foreground">
+                        How can we help you?
+                    </h1>
+                    <p className="max-w-2xl text-sm text-muted-foreground">
+                        Search help articles, open documentation, or browse the most common questions below.
+                    </p>
                 </div>
 
-                {/* Quick Links / Cards */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 hover:shadow-md transition-shadow cursor-pointer">
-                        <div className="p-3 bg-blue-100 dark:bg-blue-900/30 rounded-lg w-fit text-blue-600 dark:text-blue-400 mb-4">
-                            <FileText size={24} />
+                <Card className="overflow-hidden">
+                    <CardHeader className="border-b border-border bg-muted/20">
+                        <CardTitle>Search help</CardTitle>
+                        <CardDescription>
+                            Type a keyword to narrow the FAQ list and find the answer faster.
+                        </CardDescription>
+                        <div className="relative max-w-xl pt-2">
+                            <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                            <Input
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                                placeholder="Search for answers..."
+                                className="pl-9"
+                            />
                         </div>
-                        <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">Documentation</h3>
-                        <p className="text-gray-500 dark:text-gray-400 text-sm mb-4">
-                            Detailed guides and API references to help you get the most out of our platform.
-                        </p>
-                        <span className="text-blue-600 dark:text-blue-400 text-sm font-medium flex items-center group">
-                            Read Docs <ExternalLink size={14} className="ml-1 opacity-0 group-hover:opacity-100 transition-opacity" />
-                        </span>
-                    </div>
+                    </CardHeader>
+                </Card>
 
-                    <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 hover:shadow-md transition-shadow cursor-pointer">
-                        <div className="p-3 bg-green-100 dark:bg-green-900/30 rounded-lg w-fit text-green-600 dark:text-green-400 mb-4">
-                            <MessageCircle size={24} />
-                        </div>
-                        <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">Community Forum</h3>
-                        <p className="text-gray-500 dark:text-gray-400 text-sm mb-4">
-                            Join the conversation, share tips, and get answers from other users.
-                        </p>
-                        <span className="text-blue-600 dark:text-blue-400 text-sm font-medium flex items-center group">
-                            Visit Forum <ExternalLink size={14} className="ml-1 opacity-0 group-hover:opacity-100 transition-opacity" />
-                        </span>
-                    </div>
+                <div className="grid gap-4 md:grid-cols-3">
+                    {supportCards.map((card) => {
+                        const Icon = card.icon;
 
-                    <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 hover:shadow-md transition-shadow cursor-pointer">
-                        <div className="p-3 bg-purple-100 dark:bg-purple-900/30 rounded-lg w-fit text-purple-600 dark:text-purple-400 mb-4">
-                            <Mail size={24} />
-                        </div>
-                        <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">Contact Support</h3>
-                        <p className="text-gray-500 dark:text-gray-400 text-sm mb-4">
-                            Need personalized help? Our support team is available 24/7 to assist you.
-                        </p>
-                        <span className="text-blue-600 dark:text-blue-400 text-sm font-medium flex items-center group">
-                            Contact Us <ExternalLink size={14} className="ml-1 opacity-0 group-hover:opacity-100 transition-opacity" />
-                        </span>
-                    </div>
+                        return (
+                            <Card key={card.title} className="group transition-shadow hover:shadow-md">
+                                <CardHeader>
+                                    <div className={`mb-2 flex size-12 items-center justify-center rounded-xl ${card.accent}`}>
+                                        <Icon className="size-5" />
+                                    </div>
+                                    <CardTitle>{card.title}</CardTitle>
+                                    <CardDescription>{card.description}</CardDescription>
+                                </CardHeader>
+                                <CardContent>
+                                    <Button variant="outline" className="w-full justify-between">
+                                        {card.action}
+                                        <ExternalLink className="size-4" />
+                                    </Button>
+                                </CardContent>
+                            </Card>
+                        );
+                    })}
                 </div>
 
-                {/* FAQs Section */}
-                <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
-                    <div className="p-6 border-b border-gray-100 dark:border-gray-700">
-                        <h2 className="text-xl font-bold text-gray-900 dark:text-white">Frequently Asked Questions</h2>
-                    </div>
-                    <div className="divide-y divide-gray-100 dark:divide-gray-700">
-                        {faqs.map((faq, index) => (
-                            <div key={index} className="p-6">
-                                <button
-                                    onClick={() => setOpenFaqIndex(openFaqIndex === index ? null : index)}
-                                    className="w-full flex items-center justify-between text-left focus:outline-none group"
-                                >
-                                    <span className="text-base font-medium text-gray-800 dark:text-gray-200 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
-                                        {faq.question}
-                                    </span>
-                                    {openFaqIndex === index ? (
-                                        <ChevronUp className="text-gray-400" size={20} />
-                                    ) : (
-                                        <ChevronDown className="text-gray-400" size={20} />
-                                    )}
-                                </button>
-                                {openFaqIndex === index && (
-                                    <p className="mt-4 text-gray-600 dark:text-gray-400 text-sm leading-relaxed animate-fade-in">
-                                        {faq.answer}
-                                    </p>
-                                )}
+                <Card className="overflow-hidden">
+                    <CardHeader className="border-b border-border bg-muted/20">
+                        <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+                            <div>
+                                <CardTitle>Frequently Asked Questions</CardTitle>
+                                <CardDescription>
+                                    {filteredFaqs.length} result{filteredFaqs.length === 1 ? '' : 's'} shown.
+                                </CardDescription>
                             </div>
-                        ))}
-                    </div>
-                </div>
+                        </div>
+                    </CardHeader>
 
-                {/* Footer Note */}
-                <div className="text-center pb-8">
-                    <p className="text-sm text-gray-500 dark:text-gray-400">
-                        Still can't find what you're looking for? <a href="#" className="text-blue-600 dark:text-blue-400 font-medium hover:underline">Submit a ticket</a>
+                    <CardContent className="space-y-3 p-4 md:p-6">
+                        {filteredFaqs.length ? (
+                            filteredFaqs.map((faq) => {
+                                const open = openFaqId === faq.id;
+
+                                return (
+                                    <Collapsible
+                                        key={faq.id}
+                                        open={open}
+                                        onOpenChange={(nextOpen) => setOpenFaqId(nextOpen ? faq.id : null)}
+                                    >
+                                        <div className="rounded-xl border border-border bg-background shadow-sm">
+                                            <CollapsibleTrigger asChild>
+                                                <Button
+                                                    type="button"
+                                                    variant="ghost"
+                                                    className="flex h-auto w-full items-center justify-between gap-4 px-4 py-4 text-left hover:bg-muted/40"
+                                                >
+                                                    <span className="text-sm font-medium text-foreground">
+                                                        {faq.question}
+                                                    </span>
+                                                    <ChevronDown
+                                                        className={`size-4 shrink-0 text-muted-foreground transition-transform ${
+                                                            open ? 'rotate-180' : ''
+                                                        }`}
+                                                    />
+                                                </Button>
+                                            </CollapsibleTrigger>
+
+                                            <CollapsibleContent className="px-4 pb-4">
+                                                <p className="text-sm leading-6 text-muted-foreground">
+                                                    {faq.answer}
+                                                </p>
+                                            </CollapsibleContent>
+                                        </div>
+                                    </Collapsible>
+                                );
+                            })
+                        ) : (
+                            <div className="flex min-h-52 flex-col items-center justify-center rounded-xl border border-dashed border-border bg-background px-6 py-12 text-center">
+                                <p className="text-base font-semibold text-foreground">No FAQ matches found</p>
+                                <p className="mt-2 max-w-sm text-sm text-muted-foreground">
+                                    Try a different search term or clear the search box to see all questions again.
+                                </p>
+                            </div>
+                        )}
+                    </CardContent>
+                </Card>
+
+                <div className="text-center pb-4">
+                    <p className="text-sm text-muted-foreground">
+                        Still need help?{' '}
+                        <button type="button" className="font-medium text-primary hover:underline">
+                            Submit a ticket
+                        </button>
                     </p>
                 </div>
-
             </div>
         </div>
     );
