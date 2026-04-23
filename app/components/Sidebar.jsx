@@ -43,7 +43,7 @@ const Sidebar = ({ activeTab, setActiveTab, onNewChat, onSelectChat, recentChats
                         <ChartNoAxesCombined size={20} />
                     </div>
                     <div className="grid min-w-0 flex-1 leading-tight transition-opacity duration-200 group-data-[collapsible=icon]/sidebar-wrapper:opacity-0">
-                        <span className="truncate text-sm font-semibold">Antigravity</span>
+                        <span className="truncate text-sm font-semibold">NaLDAC</span>
                         <span className="truncate text-xs text-sidebar-foreground/70">AI analysis workspace</span>
                     </div>
                 </div>
