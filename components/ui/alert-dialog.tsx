@@ -1,10 +1,11 @@
 "use client"
 
 import * as React from "react"
-import { AlertDialog as AlertDialogPrimitive } from "radix-ui"
+import * as AlertDialogPrimitive from "@radix-ui/react-alert-dialog"
+import { XIcon } from "lucide-react"
 
 import { cn } from "@/lib/utils"
-import { buttonVariants } from "@/components/ui/button"
+import { Button } from "@/components/ui/button"
 
 function AlertDialog({
   ...props
@@ -27,7 +28,10 @@ function AlertDialogPortal({
   ...props
 }: React.ComponentProps<typeof AlertDialogPrimitive.Portal>) {
   return (
-    <AlertDialogPrimitive.Portal data-slot="alert-dialog-portal" {...props} />
+    <AlertDialogPrimitive.Portal
+      data-slot="alert-dialog-portal"
+      {...props}
+    />
   )
 }
 
@@ -49,6 +53,7 @@ function AlertDialogOverlay({
 
 function AlertDialogContent({
   className,
+  children,
   ...props
 }: React.ComponentProps<typeof AlertDialogPrimitive.Content>) {
   return (
@@ -61,7 +66,19 @@ function AlertDialogContent({
           className
         )}
         {...props}
-      />
+      >
+        {children}
+        <AlertDialogPrimitive.Cancel asChild>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            className="absolute top-3 right-3"
+          >
+            <XIcon />
+            <span className="sr-only">Close</span>
+          </Button>
+        </AlertDialogPrimitive.Cancel>
+      </AlertDialogPrimitive.Content>
     </AlertDialogPortal>
   )
 }
@@ -122,41 +139,26 @@ function AlertDialogDescription({
 }
 
 function AlertDialogAction({
-  className,
   ...props
 }: React.ComponentProps<typeof AlertDialogPrimitive.Action>) {
-  return (
-    <AlertDialogPrimitive.Action
-      data-slot="alert-dialog-action"
-      className={cn(buttonVariants(), className)}
-      {...props}
-    />
-  )
+  return <AlertDialogPrimitive.Action data-slot="alert-dialog-action" {...props} />
 }
 
 function AlertDialogCancel({
-  className,
   ...props
 }: React.ComponentProps<typeof AlertDialogPrimitive.Cancel>) {
-  return (
-    <AlertDialogPrimitive.Cancel
-      data-slot="alert-dialog-cancel"
-      className={cn(buttonVariants({ variant: "outline" }), "mt-0", className)}
-      {...props}
-    />
-  )
+  return <AlertDialogPrimitive.Cancel data-slot="alert-dialog-cancel" {...props} />
 }
 
 export {
   AlertDialog,
-  AlertDialogTrigger,
-  AlertDialogPortal,
-  AlertDialogOverlay,
-  AlertDialogContent,
-  AlertDialogHeader,
-  AlertDialogFooter,
-  AlertDialogTitle,
-  AlertDialogDescription,
   AlertDialogAction,
   AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogOverlay,
+  AlertDialogTitle,
+  AlertDialogTrigger,
 }

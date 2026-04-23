@@ -7,7 +7,6 @@ import ChatHistoryView from './components/ChatHistoryView';
 import PersonalizationView from './components/PersonalizationView';
 import SettingsView from './components/SettingsView';
 import HelpSupportView from './components/HelpSupportView';
-import LogoutModal from './components/LogoutModal';
 import DataView from './components/DataView';
 import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar';
 import { supabase } from '../lib/supabase';
@@ -20,7 +19,6 @@ export default function Page() {
   const [mounted, setMounted] = useState(false);
   const [user, setUser] = useState(null);
   const [profile, setProfile] = useState(null);
-  const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);
   const [isLoadingChat, setIsLoadingChat] = useState(false);
   const router = useRouter();
 
@@ -249,15 +247,6 @@ export default function Page() {
   };
 
   const handleLogout = async () => {
-    const showConfirmation = localStorage.getItem('showLogoutConfirmation') !== 'false';
-    if (showConfirmation) {
-      setIsLogoutModalOpen(true);
-    } else {
-      await confirmLogout();
-    }
-  };
-
-  const confirmLogout = async () => {
     await signOut();
     router.push('/login');
   };
@@ -350,11 +339,6 @@ export default function Page() {
         </div>
       </SidebarInset>
 
-      <LogoutModal
-        isOpen={isLogoutModalOpen}
-        onClose={() => setIsLogoutModalOpen(false)}
-        onConfirm={confirmLogout}
-      />
     </SidebarProvider>
   );
 }
