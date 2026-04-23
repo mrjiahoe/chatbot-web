@@ -32,6 +32,33 @@
     .animate-fade-in-up {
         animation: fadeInUp 0.4s ease-out forwards;
     }
+
+    .horizontal-scrollbar {
+        scrollbar-gutter: stable both-edges;
+        scrollbar-width: auto;
+        scrollbar-color: hsl(var(--border)) hsl(var(--muted));
+    }
+
+    .horizontal-scrollbar::-webkit-scrollbar {
+        height: 14px;
+    }
+
+    .horizontal-scrollbar::-webkit-scrollbar-track {
+        background: hsl(var(--muted));
+        border-top: 1px solid hsl(var(--border));
+        border-bottom-left-radius: 0.75rem;
+        border-bottom-right-radius: 0.75rem;
+    }
+
+    .horizontal-scrollbar::-webkit-scrollbar-thumb {
+        background: hsl(var(--border));
+        border: 3px solid hsl(var(--muted));
+        border-radius: 9999px;
+    }
+
+    .horizontal-scrollbar::-webkit-scrollbar-thumb:hover {
+        background: hsl(var(--muted-foreground));
+    }
 }
 
 @keyframes fadeIn {

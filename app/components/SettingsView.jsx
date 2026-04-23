@@ -1,8 +1,26 @@
 'use client';
-import React, { useState, useEffect } from 'react';
-import { Settings, User, Mail, Bell, Shield, Save, Key, Briefcase, Monitor, Loader2, AtSign, Smile } from 'lucide-react';
+
+import React, { useEffect, useState } from 'react';
+import {
+    AtSign,
+    Bell,
+    Key,
+    Loader2,
+    Mail,
+    Monitor,
+    Save,
+    Shield,
+    Smile,
+    User,
+} from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { getUser } from '../../lib/auth';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Field, FieldDescription, FieldGroup, FieldLabel } from '@/components/ui/field';
+import { Input } from '@/components/ui/input';
+import { Separator } from '@/components/ui/separator';
+import { Switch } from '@/components/ui/switch';
 
 const SettingsView = ({ onProfileUpdate }) => {
     const [profile, setProfile] = useState({
@@ -16,10 +34,10 @@ const SettingsView = ({ onProfileUpdate }) => {
     const [notifications, setNotifications] = useState({
         email: true,
         push: false,
-        digest: true
+        digest: true,
     });
     const [general, setGeneral] = useState({
-        logoutConfirmation: typeof window !== 'undefined' ? localStorage.getItem('showLogoutConfirmation') !== 'false' : true
+        logoutConfirmation: typeof window !== 'undefined' ? localStorage.getItem('showLogoutConfirmation') !== 'false' : true,
     });
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
@@ -28,6 +46,7 @@ const SettingsView = ({ onProfileUpdate }) => {
     useEffect(() => {
         const fetchProfile = async () => {
             const { user } = await getUser();
+
             if (user) {
                 const { data, error } = await supabase
                     .from('profiles')
@@ -37,18 +56,18 @@ const SettingsView = ({ onProfileUpdate }) => {
 
                 if (data) {
                     setProfile({
-                        username: data.username,
-                        nickname: data.nickname,
+                        username: data.username || '',
+                        nickname: data.nickname || '',
                         firstName: data.first_name || '',
                         lastName: data.last_name || '',
-                        email: user.email,
+                        email: user.email || '',
                         onboardingCompleted: data.onboarding_completed,
                     });
                 } else if (error && error.code === 'PGRST116') {
-                    // Profile doesn't exist yet, handle gracefully
-                    setProfile(prev => ({ ...prev, email: user.email }));
+                    setProfile((prev) => ({ ...prev, email: user.email || '' }));
                 }
             }
+
             setIsLoading(false);
         };
 
@@ -77,215 +96,274 @@ const SettingsView = ({ onProfileUpdate }) => {
                 setMessage({ type: 'error', text: error.message });
             } else {
                 setMessage({ type: 'success', text: 'Profile updated successfully!' });
+
                 if (onProfileUpdate) {
                     onProfileUpdate({
                         username: profile.username,
                         nickname: profile.nickname,
-                        first_name: profile.firstName,
-                        last_name: profile.lastName,
-                        onboarding_completed: profile.onboardingCompleted
+                        firstName: profile.firstName,
+                        lastName: profile.lastName,
+                        email: profile.email,
+                        onboardingCompleted: profile.onboardingCompleted,
                     });
                 }
+
                 setTimeout(() => setMessage({ type: '', text: '' }), 3000);
             }
         }
+
         setIsSaving(false);
     };
 
+    const handleLogoutConfirmationChange = (checked) => {
+        const nextValue = checked === true;
+        setGeneral({ logoutConfirmation: nextValue });
+        localStorage.setItem('showLogoutConfirmation', nextValue.toString());
+    };
+
+    if (isLoading) {
+        return (
+            <div className="flex-1 flex items-center justify-center py-16">
+                <Loader2 className="size-6 animate-spin text-muted-foreground" />
+            </div>
+        );
+    }
+
     return (
-        <div className="flex-1 overflow-y-auto bg-gray-50 dark:bg-gray-900 p-6 md:p-10 animate-fade-in custom-scrollbar">
-            <div className="max-w-4xl mx-auto space-y-8">
-                {/* Header */}
-                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                    <div>
-                        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Settings</h1>
-                        <p className="text-gray-500 dark:text-gray-400 mt-1">Manage your account information and preferences</p>
+        <div className="flex-1 overflow-y-auto bg-muted/30 p-6 md:p-10 animate-fade-in custom-scrollbar">
+            <div className="mx-auto max-w-5xl space-y-8">
+                <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+                    <div className="space-y-2">
+                        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                            Account settings
+                        </p>
+                        <h1 className="text-3xl font-semibold tracking-tight text-foreground">
+                            Settings
+                        </h1>
+                        <p className="max-w-2xl text-sm text-muted-foreground">
+                            Manage your profile, notifications, and a few app preferences from one place.
+                        </p>
                     </div>
-                    <button
-                        onClick={handleSave}
-                        disabled={isSaving}
-                        className="flex items-center justify-center px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors font-medium shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                        {isSaving ? (
-                            <Loader2 size={18} className="mr-2 animate-spin" />
-                        ) : (
-                            <Save size={18} className="mr-2" />
-                        )}
+
+                    <Button onClick={handleSave} disabled={isSaving} className="gap-2">
+                        {isSaving ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
                         Save Changes
-                    </button>
+                    </Button>
                 </div>
 
-                {/* Account Details Section */}
-                <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
-                    <div className="p-6 border-b border-gray-200 dark:border-gray-700">
-                        <h2 className="text-lg font-semibold text-gray-900 dark:text-white flex items-center">
-                            <User size={20} className="mr-2 text-blue-500" /> Account Details
-                        </h2>
+                {message.text && (
+                    <div
+                        className={`rounded-lg border px-4 py-3 text-sm font-medium ${
+                            message.type === 'success'
+                                ? 'border-green-200 bg-green-50 text-green-700 dark:border-green-900/30 dark:bg-green-900/20 dark:text-green-400'
+                                : 'border-red-200 bg-red-50 text-red-700 dark:border-red-900/30 dark:bg-red-900/20 dark:text-red-400'
+                        }`}
+                    >
+                        {message.text}
                     </div>
-                    <div className="p-6 space-y-6">
-                        {message.text && (
-                            <div className={`p-4 rounded-lg text-sm font-medium ${message.type === 'success' ? 'bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 border border-green-100 dark:border-green-900/30' : 'bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 border border-red-100 dark:border-red-900/30'}`}>
-                                {message.text}
-                            </div>
-                        )}
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Username</label>
+                )}
+
+                <Card>
+                    <CardHeader>
+                        <CardTitle className="flex items-center gap-2">
+                            <User className="size-5 text-primary" />
+                            Profile
+                        </CardTitle>
+                        <CardDescription>
+                            Update the details shown across your workspace.
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                        <FieldGroup className="grid gap-5 md:grid-cols-2">
+                            <Field>
+                                <FieldLabel htmlFor="username">Username</FieldLabel>
                                 <div className="relative">
-                                    <AtSign size={18} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
-                                    <input
+                                    <AtSign className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+                                    <Input
+                                        id="username"
                                         type="text"
                                         value={profile.username}
                                         onChange={(e) => setProfile({ ...profile, username: e.target.value })}
-                                        className="w-full pl-10 pr-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none"
+                                        className="pl-9"
                                     />
                                 </div>
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Nickname</label>
+                            </Field>
+
+                            <Field>
+                                <FieldLabel htmlFor="nickname">Nickname</FieldLabel>
                                 <div className="relative">
-                                    <Smile size={18} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
-                                    <input
+                                    <Smile className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+                                    <Input
+                                        id="nickname"
                                         type="text"
                                         value={profile.nickname}
                                         onChange={(e) => setProfile({ ...profile, nickname: e.target.value })}
-                                        className="w-full pl-10 pr-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none"
+                                        className="pl-9"
                                     />
                                 </div>
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">First Name</label>
-                                <input
+                                <FieldDescription>
+                                    You can change this anytime.
+                                </FieldDescription>
+                            </Field>
+
+                            <Field>
+                                <FieldLabel htmlFor="first-name">First name</FieldLabel>
+                                <Input
+                                    id="first-name"
                                     type="text"
                                     value={profile.firstName}
                                     onChange={(e) => setProfile({ ...profile, firstName: e.target.value })}
                                     placeholder="Optional"
-                                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none"
                                 />
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Last Name</label>
-                                <input
+                            </Field>
+
+                            <Field>
+                                <FieldLabel htmlFor="last-name">Last name</FieldLabel>
+                                <Input
+                                    id="last-name"
                                     type="text"
                                     value={profile.lastName}
                                     onChange={(e) => setProfile({ ...profile, lastName: e.target.value })}
                                     placeholder="Optional"
-                                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none"
                                 />
-                            </div>
-                        </div>
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Email Address</label>
-                            <div className="relative">
-                                <Mail size={18} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
-                                <input
-                                    type="email"
-                                    value={profile.email}
-                                    readOnly
-                                    className="w-full pl-10 pr-3 py-2 bg-gray-50 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-700 rounded-lg text-gray-500 dark:text-gray-400 cursor-not-allowed"
-                                />
-                            </div>
-                            <p className="text-[10px] text-gray-400 mt-1 ml-1">Email cannot be changed directly.</p>
-                        </div>
-                    </div>
-                </div>
+                            </Field>
 
-                {/* Notifications Section */}
-                <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
-                    <div className="p-6 border-b border-gray-200 dark:border-gray-700">
-                        <h2 className="text-lg font-semibold text-gray-900 dark:text-white flex items-center">
-                            <Bell size={20} className="mr-2 text-orange-500" /> Notification Settings
-                        </h2>
-                    </div>
-                    <div className="p-6 space-y-4">
-                        <div className="flex items-center justify-between p-3 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
-                            <div>
-                                <p className="text-sm font-medium text-gray-900 dark:text-white">Email Alerts</p>
-                                <p className="text-xs text-gray-500 dark:text-gray-400">Receive summaries and important updates via email.</p>
-                            </div>
-                            <button
-                                onClick={() => setNotifications({ ...notifications, email: !notifications.email })}
-                                className={`w-11 h-6 flex items-center rounded-full p-1 transition-colors ${notifications.email ? 'bg-blue-600' : 'bg-gray-300 dark:bg-gray-600'}`}
-                            >
-                                <div className={`bg-white w-4 h-4 rounded-full shadow-md transform transition-transform ${notifications.email ? 'translate-x-5' : ''}`} />
-                            </button>
-                        </div>
-                        <div className="flex items-center justify-between p-3 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
-                            <div>
-                                <p className="text-sm font-medium text-gray-900 dark:text-white">Push Notifications</p>
-                                <p className="text-xs text-gray-500 dark:text-gray-400">Real-time alerts in your browser.</p>
-                            </div>
-                            <button
-                                onClick={() => setNotifications({ ...notifications, push: !notifications.push })}
-                                className={`w-11 h-6 flex items-center rounded-full p-1 transition-colors ${notifications.push ? 'bg-blue-600' : 'bg-gray-300 dark:bg-gray-600'}`}
-                            >
-                                <div className={`bg-white w-4 h-4 rounded-full shadow-md transform transition-transform ${notifications.push ? 'translate-x-5' : ''}`} />
-                            </button>
-                        </div>
-                    </div>
-                </div>
+                            <Field className="md:col-span-2">
+                                <FieldLabel htmlFor="email">Email address</FieldLabel>
+                                <div className="relative">
+                                    <Mail className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+                                    <Input
+                                        id="email"
+                                        type="email"
+                                        value={profile.email}
+                                        readOnly
+                                        className="cursor-not-allowed bg-muted/50 pl-9 text-muted-foreground"
+                                    />
+                                </div>
+                                <FieldDescription>
+                                    Email cannot be changed directly.
+                                </FieldDescription>
+                            </Field>
+                        </FieldGroup>
+                    </CardContent>
+                </Card>
 
-                {/* General Preferences Section */}
-                <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
-                    <div className="p-6 border-b border-gray-200 dark:border-gray-700">
-                        <h2 className="text-lg font-semibold text-gray-900 dark:text-white flex items-center">
-                            <Monitor size={20} className="mr-2 text-purple-500" /> General Preferences
-                        </h2>
-                    </div>
-                    <div className="p-6 space-y-4">
-                        <div className="flex items-center justify-between p-3 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
-                            <div>
-                                <p className="text-sm font-medium text-gray-900 dark:text-white">Logout Confirmation</p>
-                                <p className="text-xs text-gray-500 dark:text-gray-400">Show a confirmation prompt before signing out.</p>
-                            </div>
-                            <button
-                                onClick={() => {
-                                    const newValue = !general.logoutConfirmation;
-                                    setGeneral({ ...general, logoutConfirmation: newValue });
-                                    localStorage.setItem('showLogoutConfirmation', newValue.toString());
-                                }}
-                                className={`w-11 h-6 flex items-center rounded-full p-1 transition-colors ${general.logoutConfirmation ? 'bg-blue-600' : 'bg-gray-300 dark:bg-gray-600'}`}
-                            >
-                                <div className={`bg-white w-4 h-4 rounded-full shadow-md transform transition-transform ${general.logoutConfirmation ? 'translate-x-5' : ''}`} />
-                            </button>
-                        </div>
-                    </div>
-                </div>
+                <Card>
+                    <CardHeader>
+                        <CardTitle className="flex items-center gap-2">
+                            <Bell className="size-5 text-primary" />
+                            Notifications
+                        </CardTitle>
+                        <CardDescription>
+                            Decide how you want to hear about activity in the app.
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                        {[
+                            {
+                                key: 'email',
+                                title: 'Email Alerts',
+                                description: 'Receive summaries and important updates via email.',
+                            },
+                            {
+                                key: 'push',
+                                title: 'Push Notifications',
+                                description: 'Get real-time alerts in your browser.',
+                            },
+                        ].map((item, index) => (
+                            <React.Fragment key={item.key}>
+                                <div className="flex items-center justify-between gap-4 rounded-lg border border-border p-4">
+                                    <div className="space-y-1">
+                                        <p className="text-sm font-medium text-foreground">{item.title}</p>
+                                        <p className="text-sm text-muted-foreground">{item.description}</p>
+                                    </div>
+                                    <Switch
+                                        checked={notifications[item.key]}
+                                        onCheckedChange={(checked) =>
+                                            setNotifications((prev) => ({ ...prev, [item.key]: checked === true }))
+                                        }
+                                    />
+                                </div>
+                                {index < 2 && <Separator />}
+                            </React.Fragment>
+                        ))}
+                    </CardContent>
+                </Card>
 
-                {/* Security Section */}
-                <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
-                    <div className="p-6 border-b border-gray-200 dark:border-gray-700">
-                        <h2 className="text-lg font-semibold text-gray-900 dark:text-white flex items-center">
-                            <Shield size={20} className="mr-2 text-red-500" /> Security & Privacy
-                        </h2>
-                    </div>
-                    <div className="p-6 space-y-6">
-                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-4 border border-gray-100 dark:border-gray-700 rounded-xl">
-                            <div className="flex items-start">
-                                <Key size={20} className="mt-1 mr-3 text-gray-400" />
-                                <div>
-                                    <p className="text-sm font-medium text-gray-900 dark:text-white">Password Management</p>
-                                    <p className="text-xs text-gray-500 dark:text-gray-400">Regularly updating your password increases security.</p>
+                <Card>
+                    <CardHeader>
+                        <CardTitle className="flex items-center gap-2">
+                            <Monitor className="size-5 text-primary" />
+                            Preferences
+                        </CardTitle>
+                        <CardDescription>
+                            Fine-tune a couple of small app behaviors.
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                        <div className="flex items-center justify-between gap-4 rounded-lg border border-border p-4">
+                            <div className="space-y-1">
+                                <p className="text-sm font-medium text-foreground">Logout Confirmation</p>
+                                <p className="text-sm text-muted-foreground">
+                                    Show a confirmation prompt before signing out.
+                                </p>
+                            </div>
+                            <Switch
+                                checked={general.logoutConfirmation}
+                                onCheckedChange={handleLogoutConfirmationChange}
+                            />
+                        </div>
+                    </CardContent>
+                </Card>
+
+                <Card>
+                    <CardHeader>
+                        <CardTitle className="flex items-center gap-2">
+                            <Shield className="size-5 text-primary" />
+                            Security
+                        </CardTitle>
+                        <CardDescription>
+                            Keep your account safe and review active access when needed.
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="grid gap-4 lg:grid-cols-2">
+                            <div className="rounded-lg border border-border p-4">
+                                <div className="space-y-2">
+                                    <p className="flex items-center gap-2 text-sm font-medium text-foreground">
+                                        <Key className="size-4 text-primary" />
+                                        Password Management
+                                    </p>
+                                    <p className="text-sm text-muted-foreground">
+                                        Regularly updating your password increases security.
+                                    </p>
+                                </div>
+                                <div className="mt-4">
+                                    <Button variant="outline" className="w-full sm:w-auto">
+                                        Update Password
+                                    </Button>
                                 </div>
                             </div>
-                            <button className="px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 rounded-lg text-sm font-medium hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors">
-                                Update Password
-                            </button>
-                        </div>
-                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-4 border border-gray-100 dark:border-gray-700 rounded-xl">
-                            <div className="flex items-start">
-                                <Monitor size={20} className="mt-1 mr-3 text-gray-400" />
-                                <div>
-                                    <p className="text-sm font-medium text-gray-900 dark:text-white">Active Sessions</p>
-                                    <p className="text-xs text-gray-500 dark:text-gray-400">Manage areas where you are logged in.</p>
+
+                            <div className="rounded-lg border border-border p-4">
+                                <div className="space-y-2">
+                                    <p className="flex items-center gap-2 text-sm font-medium text-foreground">
+                                        <Monitor className="size-4 text-primary" />
+                                        Active Sessions
+                                    </p>
+                                    <p className="text-sm text-muted-foreground">
+                                        Manage the places where you are currently logged in.
+                                    </p>
+                                </div>
+                                <div className="mt-4">
+                                    <Button variant="outline" className="w-full sm:w-auto">
+                                        View Sessions
+                                    </Button>
                                 </div>
                             </div>
-                            <button className="px-4 py-2 text-blue-600 dark:text-blue-400 text-sm font-medium hover:underline">
-                                View Sessions
-                            </button>
                         </div>
-                    </div>
-                </div>
+                    </CardContent>
+                </Card>
             </div>
         </div>
     );
