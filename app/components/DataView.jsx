@@ -85,11 +85,11 @@ const DataView = () => {
             <div className="mx-auto max-w-5xl space-y-6">
                 <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
                     <div className="space-y-2">
-                        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                        {/* <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
                             Data sources
-                        </p>
+                        </p> */}
                         <h1 className="text-3xl font-semibold tracking-tight text-foreground">
-                            Available Data
+                            Available Data Sources
                         </h1>
                         <p className="max-w-2xl text-sm text-muted-foreground">
                             Browse your database tables and preview records before you build a query.
@@ -106,7 +106,7 @@ const DataView = () => {
                                     <Database className="size-5 text-primary" />
                                     Database Tables
                                 </CardTitle>
-                                <CardDescription>
+                                <CardDescription className="pt-1">
                                     Browse each table and preview the first 25 rows.
                                 </CardDescription>
                             </div>
@@ -176,9 +176,9 @@ const DataView = () => {
                                                         {table.columns.length} columns
                                                     </span>
                                                 </div>
-                                                <p className="mt-1 text-xs text-muted-foreground">
+                                                {/* <p className="mt-1 text-xs text-muted-foreground">
                                                     Preview the first 25 rows and inspect the schema.
-                                                </p>
+                                                </p> */}
                                             </div>
                                         </div>
 
@@ -186,7 +186,7 @@ const DataView = () => {
                                             type="button"
                                             variant="outline"
                                             size="sm"
-                                            className="shrink-0 gap-2"
+                                            className="shrink-0 gap-2 cursor-pointer"
                                             onClick={(event) => {
                                                 event.stopPropagation();
                                                 handlePreviewTable(table);
