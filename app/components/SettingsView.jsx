@@ -36,9 +36,6 @@ const SettingsView = ({ onProfileUpdate }) => {
         push: false,
         digest: true,
     });
-    const [general, setGeneral] = useState({
-        logoutConfirmation: typeof window !== 'undefined' ? localStorage.getItem('showLogoutConfirmation') !== 'false' : true,
-    });
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
     const [message, setMessage] = useState({ type: '', text: '' });
@@ -113,12 +110,6 @@ const SettingsView = ({ onProfileUpdate }) => {
         }
 
         setIsSaving(false);
-    };
-
-    const handleLogoutConfirmationChange = (checked) => {
-        const nextValue = checked === true;
-        setGeneral({ logoutConfirmation: nextValue });
-        localStorage.setItem('showLogoutConfirmation', nextValue.toString());
     };
 
     if (isLoading) {
@@ -290,31 +281,7 @@ const SettingsView = ({ onProfileUpdate }) => {
                     </CardContent>
                 </Card>
 
-                <Card>
-                    <CardHeader>
-                        <CardTitle className="flex items-center gap-2">
-                            <Monitor className="size-5 text-primary" />
-                            Preferences
-                        </CardTitle>
-                        <CardDescription>
-                            Fine-tune a couple of small app behaviors.
-                        </CardDescription>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                        <div className="flex items-center justify-between gap-4 rounded-lg border border-border p-4">
-                            <div className="space-y-1">
-                                <p className="text-sm font-medium text-foreground">Logout Confirmation</p>
-                                <p className="text-sm text-muted-foreground">
-                                    Show a confirmation prompt before signing out.
-                                </p>
-                            </div>
-                            <Switch
-                                checked={general.logoutConfirmation}
-                                onCheckedChange={handleLogoutConfirmationChange}
-                            />
-                        </div>
-                    </CardContent>
-                </Card>
+
 
                 <Card>
                     <CardHeader>
@@ -323,43 +290,24 @@ const SettingsView = ({ onProfileUpdate }) => {
                             Security
                         </CardTitle>
                         <CardDescription>
-                            Keep your account safe and review active access when needed.
+                            Keep your account safe and manage password access.
                         </CardDescription>
                     </CardHeader>
                     <CardContent>
-                        <div className="grid gap-4 lg:grid-cols-2">
-                            <div className="rounded-lg border border-border p-4">
-                                <div className="space-y-2">
-                                    <p className="flex items-center gap-2 text-sm font-medium text-foreground">
-                                        <Key className="size-4 text-primary" />
-                                        Password Management
-                                    </p>
-                                    <p className="text-sm text-muted-foreground">
-                                        Regularly updating your password increases security.
-                                    </p>
-                                </div>
-                                <div className="mt-4">
-                                    <Button variant="outline" className="w-full sm:w-auto">
-                                        Update Password
-                                    </Button>
-                                </div>
+                        <div className="rounded-lg border border-border p-4">
+                            <div className="space-y-2">
+                                <p className="flex items-center gap-2 text-sm font-medium text-foreground">
+                                    <Key className="size-4 text-primary" />
+                                    Password Management
+                                </p>
+                                <p className="text-sm text-muted-foreground">
+                                    Regularly updating your password increases security.
+                                </p>
                             </div>
-
-                            <div className="rounded-lg border border-border p-4">
-                                <div className="space-y-2">
-                                    <p className="flex items-center gap-2 text-sm font-medium text-foreground">
-                                        <Monitor className="size-4 text-primary" />
-                                        Active Sessions
-                                    </p>
-                                    <p className="text-sm text-muted-foreground">
-                                        Manage the places where you are currently logged in.
-                                    </p>
-                                </div>
-                                <div className="mt-4">
-                                    <Button variant="outline" className="w-full sm:w-auto">
-                                        View Sessions
-                                    </Button>
-                                </div>
+                            <div className="mt-4">
+                                <Button variant="outline" className="w-full sm:w-auto">
+                                    Update Password
+                                </Button>
                             </div>
                         </div>
                     </CardContent>
