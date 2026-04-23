@@ -1,7 +1,5 @@
 import './globals.css';
-import { Inter } from 'next/font/google';
-
-const inter = Inter({ subsets: ['latin'] });
+import { TooltipProvider } from '@/components/ui/tooltip';
 
 export const metadata = {
     title: 'DataChat - AI Chatbot',
@@ -11,7 +9,9 @@ export const metadata = {
 export default function RootLayout({ children }) {
     return (
         <html lang="en" suppressHydrationWarning>
-            <body className={inter.className}>{children}</body>
+            <body className="font-sans antialiased">
+                <TooltipProvider>{children}</TooltipProvider>
+            </body>
         </html>
     );
 }

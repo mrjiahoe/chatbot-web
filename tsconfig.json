@@ -9,6 +9,7 @@
     "paths": {
       "@/*": ["./*"]
     },
+    "ignoreDeprecations": "6.0",
 
     /* Bundler mode */
     "moduleResolution": "bundler",
@@ -24,6 +25,6 @@
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["app", "lib"],
+  "include": ["app", "lib", "components", "hooks"],
   "references": [{ "path": "./tsconfig.node.json" }]
 }

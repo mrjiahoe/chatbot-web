@@ -8,12 +8,12 @@ import PersonalizationView from './components/PersonalizationView';
 import SettingsView from './components/SettingsView';
 import HelpSupportView from './components/HelpSupportView';
 import LogoutModal from './components/LogoutModal';
-
 import DataView from './components/DataView';
+import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar';
 import { supabase } from '../lib/supabase';
 import { getUser, signOut } from '../lib/auth';
 import { useRouter } from 'next/navigation';
-import { LogOut, Loader2 } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 
 export default function Page() {
   const [theme, setTheme] = useState('system');
@@ -271,91 +271,90 @@ export default function Page() {
   }
 
   return (
-    <div className="flex h-screen bg-[#fbfbfb] dark:bg-zinc-950 transition-colors duration-300 font-sans selection:bg-black/10 dark:selection:bg-white/10 text-zinc-900 dark:text-zinc-100 overflow-hidden">
-      <div className="z-50 flex-shrink-0">
-        <Sidebar
-          activeTab={activeTab}
-          setActiveTab={setActiveTab}
-          onNewChat={handleNewChat}
-          onSelectChat={handleSelectChat}
-          recentChats={recentChats}
-          activeChatId={activeChatId}
-          onLogout={handleLogout}
-          user={user}
-          profile={profile}
-        />
-      </div>
+    <SidebarProvider className="h-screen overflow-hidden bg-[#fbfbfb] text-zinc-900 transition-colors duration-300 font-sans selection:bg-black/10 dark:selection:bg-white/10 dark:bg-zinc-950 dark:text-zinc-100">
+      <Sidebar
+        activeTab={activeTab}
+        setActiveTab={setActiveTab}
+        onNewChat={handleNewChat}
+        onSelectChat={handleSelectChat}
+        recentChats={recentChats}
+        activeChatId={activeChatId}
+        onLogout={handleLogout}
+        user={user}
+        profile={profile}
+      />
 
-      <main className="flex-1 flex flex-col h-full overflow-hidden relative transition-all duration-300 z-10">
-        <Header
-          theme={theme}
-          setTheme={setTheme}
-          chatTitle={activeChatTitle}
-          activeChatId={activeChatId}
-          onRenameChat={handleRenameChat}
-          activeTab={activeTab}
-        />
+      <SidebarInset className="overflow-hidden bg-transparent">
+        <div className="flex h-full flex-col overflow-hidden">
+          <Header
+            theme={theme}
+            setTheme={setTheme}
+            chatTitle={activeChatTitle}
+            activeChatId={activeChatId}
+            onRenameChat={handleRenameChat}
+            activeTab={activeTab}
+          />
 
-        <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
-          {activeTab === 'Chat' ? (
-            <ChatArea
-              messages={messages}
-              setMessages={setMessages}
-              onViewHistory={() => setActiveTab('HistoryList')}
-              activeChatId={activeChatId}
-              onConversationCreated={(id) => {
-                setActiveChatId(id);
-                // Refresh chats list
-                supabase.from('conversations').select('*').order('updated_at', { ascending: false })
-                  .then(({ data }) => {
-                    if (data) setRecentChats(data.map(c => ({
-                      id: c.id,
-                      title: c.title || 'New Project',
-                      date: new Date(c.created_at).toLocaleDateString()
-                    })));
-                  });
-              }}
-              isLoadingChat={isLoadingChat}
-            />
-          ) : activeTab === 'DataCenter' ? (
-            <DataView />
-          ) : activeTab === 'HistoryList' ? (
-            <div className="flex-1 flex flex-col min-h-0 pt-4">
-              <ChatHistoryView
-                onSelectChat={handleSelectChat}
-                recentChats={recentChats}
-                onRenameChat={handleRenameChat}
-                onDeleteChat={handleDeleteChat}
+          <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+            {activeTab === 'Chat' ? (
+              <ChatArea
+                messages={messages}
+                setMessages={setMessages}
+                onViewHistory={() => setActiveTab('HistoryList')}
+                activeChatId={activeChatId}
+                onConversationCreated={(id) => {
+                  setActiveChatId(id);
+                  // Refresh chats list
+                  supabase.from('conversations').select('*').order('updated_at', { ascending: false })
+                    .then(({ data }) => {
+                      if (data) setRecentChats(data.map(c => ({
+                        id: c.id,
+                        title: c.title || 'New Project',
+                        date: new Date(c.created_at).toLocaleDateString()
+                      })));
+                    });
+                }}
+                isLoadingChat={isLoadingChat}
               />
-            </div>
-          ) : activeTab === 'Personalization' ? (
-            <div className="flex-1 flex flex-col min-h-0 pt-4">
-              <PersonalizationView theme={theme} setTheme={setTheme} />
-            </div>
-          ) : activeTab === 'Settings' ? (
-            <div className="flex-1 flex flex-col min-h-0 pt-4">
-              <SettingsView onProfileUpdate={(newProfile) => setProfile(newProfile)} />
-            </div>
-          ) : activeTab === 'Help' ? (
-            <div className="flex-1 flex flex-col min-h-0 pt-4">
-              <HelpSupportView />
-            </div>
-          ) : (
-            <div className="flex-1 flex items-center justify-center text-gray-400 dark:text-gray-600 animate-fade-in">
-              <div className="text-center">
-                <p className="text-lg font-medium">Select a view</p>
+            ) : activeTab === 'DataCenter' ? (
+              <DataView />
+            ) : activeTab === 'HistoryList' ? (
+              <div className="flex-1 flex flex-col min-h-0 pt-4">
+                <ChatHistoryView
+                  onSelectChat={handleSelectChat}
+                  recentChats={recentChats}
+                  onRenameChat={handleRenameChat}
+                  onDeleteChat={handleDeleteChat}
+                />
               </div>
-            </div>
-          )}
+            ) : activeTab === 'Personalization' ? (
+              <div className="flex-1 flex flex-col min-h-0 pt-4">
+                <PersonalizationView theme={theme} setTheme={setTheme} />
+              </div>
+            ) : activeTab === 'Settings' ? (
+              <div className="flex-1 flex flex-col min-h-0 pt-4">
+                <SettingsView onProfileUpdate={(newProfile) => setProfile(newProfile)} />
+              </div>
+            ) : activeTab === 'Help' ? (
+              <div className="flex-1 flex flex-col min-h-0 pt-4">
+                <HelpSupportView />
+              </div>
+            ) : (
+              <div className="flex-1 flex items-center justify-center text-gray-400 dark:text-gray-600 animate-fade-in">
+                <div className="text-center">
+                  <p className="text-lg font-medium">Select a view</p>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
-      </main>
+      </SidebarInset>
 
       <LogoutModal
         isOpen={isLogoutModalOpen}
         onClose={() => setIsLogoutModalOpen(false)}
         onConfirm={confirmLogout}
       />
-    </div>
+    </SidebarProvider>
   );
-};
-
+}

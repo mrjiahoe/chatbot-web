@@ -1,6 +1,7 @@
 'use client';
 import React from 'react';
-import { Sun, Moon, Bell, Menu, Pencil, Check, X } from 'lucide-react';
+import { Sun, Moon, Bell, Pencil, Check, X } from 'lucide-react';
+import { SidebarTrigger } from '@/components/ui/sidebar';
 
 const Header = ({ theme, setTheme, chatTitle, activeChatId, onRenameChat, activeTab }) => {
     const [isEditing, setIsEditing] = React.useState(false);
@@ -58,11 +59,9 @@ const Header = ({ theme, setTheme, chatTitle, activeChatId, onRenameChat, active
     };
 
     return (
-        <header className="h-16 bg-transparent flex items-center justify-between px-6 z-[100] transition-colors duration-300 w-full max-w-4xl mx-auto relative">
-            <div className="flex items-center space-x-4 flex-1">
-                <button className="md:hidden p-2 -ml-2 rounded-full text-zinc-500 hover:bg-black/5 dark:hover:bg-white/5 transition-colors">
-                    <Menu size={20} />
-                </button>
+        <header className="h-16 bg-transparent flex items-center justify-between px-4 md:px-6 z-[100] transition-colors duration-300 w-full max-w-4xl mx-auto relative">
+            <div className="flex items-center gap-3 flex-1 min-w-0">
+                <SidebarTrigger className="-ml-1 text-zinc-500 hover:bg-black/5 dark:hover:bg-white/5" />
                 <div className="flex flex-col flex-1 min-w-0">
                     {isEditing ? (
                         <div className="flex items-center space-x-2 animate-fade-in">
@@ -179,4 +178,3 @@ const Header = ({ theme, setTheme, chatTitle, activeChatId, onRenameChat, active
 };
 
 export default Header;
-
