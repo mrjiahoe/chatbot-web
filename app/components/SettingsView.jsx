@@ -332,7 +332,7 @@ const SettingsView = ({ onProfileUpdate, theme, setTheme }) => {
                     </CardContent>
                 </Card>
 
-                <Card>
+                {/* <Card>
                     <CardHeader>
                         <CardTitle className="flex items-center gap-2">
                             <Globe className="size-5 text-primary" />
@@ -380,7 +380,7 @@ const SettingsView = ({ onProfileUpdate, theme, setTheme }) => {
                             </Field>
                         </FieldGroup>
                     </CardContent>
-                </Card>
+                </Card> */}
 
                 <Card>
                     <CardHeader>
