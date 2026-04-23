@@ -86,7 +86,7 @@ const ChatHistoryView = ({ onSelectChat, recentChats, onRenameChat, onDeleteChat
 
                 <Card className="overflow-hidden">
                     <CardHeader className="space-y-3 border-b border-border bg-muted/20">
-                        <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+                        {/* <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
                             <div>
                                 <CardTitle className="flex items-center gap-2">
                                     <Clock className="size-5 text-primary" />
@@ -100,7 +100,7 @@ const ChatHistoryView = ({ onSelectChat, recentChats, onRenameChat, onDeleteChat
                             <p className="text-sm text-muted-foreground">
                                 {filteredChats.length} result{filteredChats.length === 1 ? '' : 's'}
                             </p>
-                        </div>
+                        </div> */}
 
                         <div className="relative max-w-md">
                             <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
