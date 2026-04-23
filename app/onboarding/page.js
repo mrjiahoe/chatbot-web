@@ -4,7 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ArrowRight, AtSign, CheckCircle2, Loader2, User } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
-import { getUser } from '../../lib/auth';
+import { getSession } from '../../lib/auth';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Field, FieldDescription, FieldGroup, FieldLabel } from '@/components/ui/field';
@@ -21,10 +21,11 @@ export default function OnboardingPage() {
 
     useEffect(() => {
         const checkSession = async () => {
-            const { user } = await getUser();
+            const { session } = await getSession();
+            const user = session?.user;
 
             if (!user) {
-                router.push('/welcome');
+                router.replace('/welcome');
                 return;
             }
 
@@ -35,7 +36,7 @@ export default function OnboardingPage() {
                 .single();
 
             if (profile?.onboarding_completed) {
-                router.push('/');
+                router.replace('/');
             }
         };
 
@@ -91,7 +92,7 @@ export default function OnboardingPage() {
             setError(updateError.message);
             setIsLoading(false);
         } else {
-            router.push('/');
+            router.replace('/');
         }
     };
 

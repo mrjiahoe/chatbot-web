@@ -9,7 +9,7 @@ import HelpSupportView from './components/HelpSupportView';
 import DataView from './components/DataView';
 import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar';
 import { supabase } from '../lib/supabase';
-import { getUser, signOut } from '../lib/auth';
+import { getSession, signOut } from '../lib/auth';
 import { useRouter } from 'next/navigation';
 import { Loader2 } from 'lucide-react';
 
@@ -27,34 +27,35 @@ export default function Page() {
 
     // This function checks if you are logged in and if your profile is finished
     const checkUser = async () => {
-      const { user } = await getUser(); // Ask Supabase: "Who is this user?"
+      const { session } = await getSession(); // Read the current session first
 
-      if (!user) {
+      if (!session?.user) {
         // If the user is NOT logged in, send them to the welcome page
-        router.push('/welcome');
+        router.replace('/welcome');
       } else {
         // If they ARE logged in, save their basic info
-        setUser(user);
+        const currentUser = session.user;
+        setUser(currentUser);
 
         // Now, look in the 'profiles' database table for this user's extra info
         const { data: profileData } = await supabase
           .from('profiles')
           .select('*')
-          .eq('id', user.id)
+          .eq('id', currentUser.id)
           .single();
 
         if (profileData) {
           // If we found a profile, check if they finished the onboarding (nickname/username)
           if (!profileData.onboarding_completed) {
             // Not finished? Send them to the onboarding page
-            router.push('/onboarding');
+            router.replace('/onboarding');
           } else {
             // All good! Save the profile and let them use the app
             setProfile(profileData);
           }
         } else {
           // If the user exists but has NO entry in 'profiles' yet, send them to onboard
-          router.push('/onboarding');
+          router.replace('/onboarding');
         }
       }
     };
