@@ -51,6 +51,18 @@ function httpError(statusCode, message) {
     return err;
 }
 
+function buildPersistedGeneratedJson(responsePayload) {
+    if (!responsePayload?.generatedJson) {
+        return null;
+    }
+
+    return {
+        request: responsePayload.generatedJson,
+        execution: responsePayload.execution || null,
+        data: responsePayload.data || null,
+    };
+}
+
 async function ensureConversation({ supabase, conversationId, message, userId }) {
     if (conversationId) {
         const { data, error } = await supabase
@@ -177,7 +189,7 @@ export async function POST(req) {
             content: responsePayload.message,
             tokenUsage: responsePayload.tokenUsage || null,
             generatedSql: responsePayload.generatedSql || null,
-            generatedJson: responsePayload.generatedJson || null,
+            generatedJson: buildPersistedGeneratedJson(responsePayload),
         });
 
         return NextResponse.json(

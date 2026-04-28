@@ -13,6 +13,46 @@ import { getSession, signOut } from '../lib/auth';
 import { useRouter } from 'next/navigation';
 import { Loader2 } from 'lucide-react';
 
+function normalizeGeneratedPayload(value) {
+  if (!value || typeof value !== 'object') {
+    return {
+      generatedJson: value || null,
+      resultData: null,
+      execution: null,
+    };
+  }
+
+  if ('request' in value || 'data' in value || 'execution' in value) {
+    return {
+      generatedJson: value.request || null,
+      resultData: value.data || null,
+      execution: value.execution || null,
+    };
+  }
+
+  return {
+    generatedJson: value,
+    resultData: null,
+    execution: null,
+  };
+}
+
+function toUiMessage(msg) {
+  const normalized = normalizeGeneratedPayload(msg.generated_json);
+
+  return {
+    id: msg.id,
+    sender: msg.role === 'user' ? 'user' : 'bot',
+    text: msg.content,
+    timestamp: new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    token_usage: msg.token_usage,
+    generatedSql: msg.generated_sql,
+    generatedJson: normalized.generatedJson,
+    resultData: normalized.resultData,
+    execution: normalized.execution,
+  };
+}
+
 export default function Page() {
   const [theme, setTheme] = useState('system');
   const [mounted, setMounted] = useState(false);
@@ -109,15 +149,7 @@ export default function Page() {
           console.error('Error fetching messages:', error);
           setMessages([]);
         } else {
-          setMessages(data.map(msg => ({
-            id: msg.id,
-            sender: msg.role === 'user' ? 'user' : 'bot',
-            text: msg.content,
-            timestamp: new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-            token_usage: msg.token_usage,
-            generatedSql: msg.generated_sql,
-            generatedJson: msg.generated_json
-          })));
+          setMessages(data.map(toUiMessage));
         }
         setIsLoadingChat(false);
       };
@@ -195,15 +227,7 @@ export default function Page() {
       console.error('Error fetching messages:', error);
       setMessages([]);
     } else {
-      setMessages(data.map(msg => ({
-        id: msg.id,
-        sender: msg.role === 'user' ? 'user' : 'bot',
-        text: msg.content,
-        timestamp: new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        token_usage: msg.token_usage,
-        generatedSql: msg.generated_sql,
-        generatedJson: msg.generated_json
-      })));
+      setMessages(data.map(toUiMessage));
     }
 
     setIsLoadingChat(false);

@@ -84,8 +84,9 @@ def build_distribution(df, column):
     numeric = pd.to_numeric(series, errors="coerce")
 
     if len(series) > 0 and numeric.notna().sum() == len(series):
-        return {
+        distribution = {
             "summary": f"Distribution analysis calculated descriptive statistics for {column}.",
+            "distribution_type": "numeric",
             "rows": [
                 {
                     "count": int(numeric.count()),
@@ -97,13 +98,51 @@ def build_distribution(df, column):
             ],
         }
 
+        unique_values = int(numeric.nunique())
+        if unique_values > 1:
+            bin_count = min(8, unique_values)
+            binned = pd.cut(numeric, bins=bin_count, include_lowest=True)
+            counts = binned.value_counts(sort=False)
+            distribution["bins"] = [
+                {
+                    "label": str(interval),
+                    "count": int(count),
+                }
+                for interval, count in counts.items()
+            ]
+        else:
+            distribution["bins"] = [
+                {
+                    "label": str(float(numeric.iloc[0])),
+                    "count": int(numeric.count()),
+                }
+            ]
+
+        return distribution
+
     counts = series.astype(str).value_counts().reset_index()
     counts.columns = [column, "count"]
 
     return {
         "summary": f"Distribution analysis calculated category counts for {column}.",
+        "distribution_type": "categorical",
         "rows": counts.to_dict(orient="records"),
     }
+
+
+def sample_points(df, x_column, y_column, max_points=80):
+    if len(df) <= max_points:
+        sample = df
+    else:
+        sample = df.sample(n=max_points, random_state=42)
+
+    return [
+        {
+            "x": float(row[x_column]),
+            "y": float(row[y_column]),
+        }
+        for _, row in sample.iterrows()
+    ]
 
 
 def build_composition(df, column, group_by):
@@ -193,6 +232,7 @@ def build_correlation(df, column, second_column):
             f"Correlation analysis found a {strength} {direction} relationship "
             f"between {column} and {second_column}."
         ),
+        "points": sample_points(clean, column, second_column),
         "rows": [
             {
                 "column": column,

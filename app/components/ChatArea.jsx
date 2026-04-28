@@ -12,6 +12,10 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import ResultVisualization, {
+    canVisualizeStructuredResult,
+    stripVisualizationTableFromMessage,
+} from './ResultVisualization';
 
 const ChatArea = ({ messages, setMessages, onViewHistory, activeChatId, onConversationCreated, isLoadingChat }) => {
     const [inputValue, setInputValue] = useState('');
@@ -166,7 +170,9 @@ const ChatArea = ({ messages, setMessages, onViewHistory, activeChatId, onConver
                 timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
                 tokenUsage: payload.tokenUsage || {},
                 generatedSql: payload.generatedSql || null,
-                generatedJson: payload.generatedJson || null
+                generatedJson: payload.generatedJson || null,
+                resultData: payload.data || null,
+                execution: payload.execution || null,
             };
 
             const convId = payload.conversationId || response.headers.get('X-Conversation-Id');
@@ -227,7 +233,17 @@ const ChatArea = ({ messages, setMessages, onViewHistory, activeChatId, onConver
                     onScroll={handleScroll}
                 >
                     <div className="max-w-3xl mx-auto space-y-10 py-8">
-                        {messages.map((message) => (
+                        {messages.map((message) => {
+                            const hasVisualization = message.sender === 'bot' && canVisualizeStructuredResult({
+                                execution: message.execution,
+                                data: message.resultData,
+                                request: message.generatedJson,
+                            });
+                            const displayText = hasVisualization
+                                ? stripVisualizationTableFromMessage(message.text)
+                                : message.text;
+
+                            return (
                             <div key={message.id} className="group relative flex items-start gap-5">
                                 <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 border ${message.sender === 'user'
                                     ? 'bg-zinc-100 dark:bg-zinc-800 border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300'
@@ -255,6 +271,13 @@ const ChatArea = ({ messages, setMessages, onViewHistory, activeChatId, onConver
                                                 {message.timestamp}
                                             </span>
                                         </div>
+                                        {message.sender === 'bot' && (
+                                            <ResultVisualization
+                                                execution={message.execution}
+                                                data={message.resultData}
+                                                request={message.generatedJson}
+                                            />
+                                        )}
                                         <div className={`prose dark:prose-invert max-w-none leading-relaxed text-[15px] ${message.isError ? 'text-red-600 dark:text-red-400 italic' : 'text-zinc-700 dark:text-zinc-300'}`}>
                                             <ReactMarkdown
                                                 remarkPlugins={[remarkGfm]}
@@ -285,7 +308,7 @@ const ChatArea = ({ messages, setMessages, onViewHistory, activeChatId, onConver
                                                     p: ({ children }) => <p className="mb-4 last:mb-0">{children}</p>,
                                                 }}
                                             >
-                                                {message.text}
+                                                {displayText}
                                             </ReactMarkdown>
                                         </div>
                                         {message.sender === 'bot' && (message.tokenUsage || message.token_usage) && ((message.tokenUsage || message.token_usage).promptTokenCount || (message.tokenUsage || message.token_usage).candidatesTokenCount) && (
@@ -336,7 +359,8 @@ const ChatArea = ({ messages, setMessages, onViewHistory, activeChatId, onConver
                                     </CardContent>
                                 </Card>
                             </div>
-                        ))}
+                            );
+                        })}
 
                         {isLoading && (
                             <div className="flex items-start gap-5">
