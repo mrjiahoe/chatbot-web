@@ -11,3 +11,6 @@ dependencies = [
     "pandas>=2.2.3",
     "uvicorn>=0.35.0",
 ]
+
+[project.scripts]
+app = "api.app:app"

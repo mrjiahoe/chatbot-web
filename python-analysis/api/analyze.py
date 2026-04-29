@@ -6,7 +6,10 @@ from typing import Any
 from fastapi import FastAPI, Header, HTTPException
 from pydantic import BaseModel, Field
 
-from _analysis_core import run_analysis
+try:
+    from ._analysis_core import run_analysis
+except ImportError:
+    from _analysis_core import run_analysis
 
 
 class AnalysisRequest(BaseModel):
