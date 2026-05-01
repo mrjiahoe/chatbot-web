@@ -11,15 +11,18 @@ import {
     MessageSquare,
     Plus,
     Settings,
+    ShieldCheck,
     ChevronsUpDown,
 } from 'lucide-react';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Sidebar as SidebarRoot, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarRail, SidebarSeparator } from '@/components/ui/sidebar';
+import { canManageRoles } from '@/lib/roles';
 
 const Sidebar = ({ activeTab, setActiveTab, onNewChat, onSelectChat, recentChats, activeChatId, onLogout, user, profile }) => {
     const displayName = profile?.nickname || user?.email?.split('@')[0] || 'User Profile';
     const secondaryLabel = profile?.username ? `@${profile.username}` : user?.email || 'Free Plan';
+    const hasRoleManagementAccess = canManageRoles(profile?.role);
     const initials = displayName
         .split(' ')
         .map(part => part[0])
@@ -32,6 +35,7 @@ const Sidebar = ({ activeTab, setActiveTab, onNewChat, onSelectChat, recentChats
         { icon: MessageSquare, label: 'Chat', id: 'Chat' },
         { icon: Database, label: 'Data Sources', id: 'DataCenter' },
         { icon: Clock, label: 'History', id: 'HistoryList' },
+        ...(hasRoleManagementAccess ? [{ icon: ShieldCheck, label: 'User Roles', id: 'UserRoles' }] : []),
     ];
 
     return (

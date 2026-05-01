@@ -20,6 +20,7 @@ const Header = ({ theme, setTheme, chatTitle, activeChatId, onRenameChat, active
     const displayTitle = activeTab === 'Chat' ? chatTitle :
         activeTab === 'DataCenter' ? 'Data Sources' :
             activeTab === 'HistoryList' ? 'Chat History' :
+                activeTab === 'UserRoles' ? 'User Roles' :
                 activeTab === 'Settings' ? 'Settings' :
                     activeTab === 'Help' ? 'Help & Support' : 'Dashboard';
 

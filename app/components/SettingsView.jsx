@@ -56,6 +56,7 @@ const SettingsView = ({ onProfileUpdate, theme, setTheme }) => {
         firstName: '',
         lastName: '',
         email: '',
+        role: 'user',
         onboardingCompleted: true,
     });
     const [bio, setBio] = useState(() =>
@@ -95,6 +96,7 @@ const SettingsView = ({ onProfileUpdate, theme, setTheme }) => {
                         firstName: data.first_name || '',
                         lastName: data.last_name || '',
                         email: user.email || '',
+                        role: data.role || 'user',
                         onboardingCompleted: data.onboarding_completed,
                     });
                 } else if (error && error.code === 'PGRST116') {

@@ -7,11 +7,13 @@ import ChatHistoryView from './components/ChatHistoryView';
 import SettingsView from './components/SettingsView';
 import HelpSupportView from './components/HelpSupportView';
 import DataView from './components/DataView';
+import UserRolesView from './components/UserRolesView';
 import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar';
 import { supabase } from '../lib/supabase';
 import { getSession, signOut } from '../lib/auth';
 import { useRouter } from 'next/navigation';
 import { Loader2 } from 'lucide-react';
+import { canManageRoles } from '@/lib/roles';
 
 function normalizeGeneratedPayload(value) {
   if (!value || typeof value !== 'object') {
@@ -109,6 +111,7 @@ export default function Page() {
   const [messages, setMessages] = useState([]);
   const [activeChatId, setActiveChatId] = useState(null);
   const [recentChats, setRecentChats] = useState([]);
+  const hasRoleManagementAccess = canManageRoles(profile?.role);
 
   // Persist and restore activeTab from localStorage
   useEffect(() => {
@@ -121,6 +124,12 @@ export default function Page() {
   useEffect(() => {
     localStorage.setItem('activeTab', activeTab);
   }, [activeTab]);
+
+  useEffect(() => {
+    if (!hasRoleManagementAccess && activeTab === 'UserRoles') {
+      setActiveTab('Chat');
+    }
+  }, [activeTab, hasRoleManagementAccess]);
 
   // Persist and restore activeChatId from localStorage
   useEffect(() => {
@@ -345,8 +354,12 @@ export default function Page() {
                 <SettingsView
                   theme={theme}
                   setTheme={setTheme}
-                  onProfileUpdate={(newProfile) => setProfile(newProfile)}
+                  onProfileUpdate={(newProfile) => setProfile((currentProfile) => ({ ...currentProfile, ...newProfile }))}
                 />
+              </div>
+            ) : activeTab === 'UserRoles' ? (
+              <div className="flex-1 flex flex-col min-h-0 pt-4">
+                <UserRolesView currentRole={profile?.role} />
               </div>
             ) : activeTab === 'Help' ? (
               <div className="flex-1 flex flex-col min-h-0 pt-4">
