@@ -54,8 +54,9 @@ The chat endpoint now follows a structured-query pipeline instead of executing m
     -   **Supabase** queries run through the query builder and aggregate safely in Node.js.
     -   **Azure MySQL** queries use parameterized SQL only.
     -   **Python** analysis runs in `lib/analysisService.py` with pandas.
-        Supported analysis types are `trend`, `comparison`, `distribution`, `composition`, `outlier`, and `correlation`.
-        `correlation` can request a `second_column`, while `trend`, `comparison`, and `composition` require `group_by`.
+        Supported analysis types are `trend`, `comparison`, `distribution`, `composition`, `outlier`, `correlation`, `period_change`, and `data_quality`.
+        `correlation` can request a `second_column`, while `trend`, `comparison`, `composition`, and `period_change` require `group_by`.
+        `data_quality` may omit `column` to run a table-wide quality check.
 6.  **Formatting** (`lib/resultFormatter.js`): Results are returned as JSON and also converted into a markdown-friendly assistant message for the UI.
 
 ## 5. Database Schema Map

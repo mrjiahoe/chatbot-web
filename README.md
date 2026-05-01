@@ -5,7 +5,7 @@ A powerful Next.js application that combines AI-driven chat with robust data ana
 ## 🚀 Key Features
 - **AI Chatbot**: Powered by Google's Gemini AI for intelligent data conversations.
 - **Structured Analytics**: Safe natural-language queries for `select`, `count`, `average`, and `sum`.
-- **Python Analysis**: Built-in `trend`, `comparison`, `distribution`, `composition`, `outlier`, and `correlation` analysis modes.
+- **Python Analysis**: Built-in `trend`, `comparison`, `distribution`, `composition`, `outlier`, `correlation`, `period_change`, and `data_quality` analysis modes.
 - **Data Center**: Upload CSV and Excel files to Supabase Storage.
 - **Real-time Preview**: View your uploaded data directly in the app.
 - **Onboarding Flow**: Beautiful onboarding for initial profile setup (Username/Nickname).

@@ -68,6 +68,26 @@ function buildVisualizationModel({ execution, data, request }) {
             };
         }
 
+        if (execution.analysis === 'period_change' && Array.isArray(data.rows) && data.rows.length > 0) {
+            const labelKey = request?.group_by || getRowLabelKey(data.rows[0], [request?.column, 'previous_value', 'absolute_change', 'pct_change']);
+            const points = normalizeBars(
+                data.rows,
+                labelKey,
+                request?.column || Object.keys(data.rows[0])[1]
+            );
+
+            return {
+                kind: points.length > 1 ? 'line' : 'stats',
+                title: 'Period Change',
+                xLabel: labelKey,
+                yLabel: request?.column || 'value',
+                points,
+                stats: {
+                    latest_pct_change: data.latest_pct_change,
+                },
+            };
+        }
+
         if (
             (execution.analysis === 'comparison' || execution.analysis === 'composition') &&
             Array.isArray(data.rows) &&
@@ -161,6 +181,29 @@ function buildVisualizationModel({ execution, data, request }) {
                     kind: 'stats',
                     title: 'Correlation Summary',
                     stats: summary,
+                };
+            }
+        }
+
+        if (execution.analysis === 'data_quality') {
+            if (data.scope === 'table' && Array.isArray(data.rows) && data.rows.length > 0) {
+                return {
+                    kind: 'bars',
+                    title: 'Missing Data By Column',
+                    subtitle: data.overview
+                        ? `${formatValue(data.overview.total_missing_cells)} missing cells across ${formatValue(data.overview.column_count)} columns`
+                        : null,
+                    metricLabel: 'missing_pct',
+                    stats: data.overview,
+                    bars: normalizeBars(data.rows, 'column', 'missing_pct'),
+                };
+            }
+
+            if (data.scope === 'column') {
+                return {
+                    kind: 'stats',
+                    title: 'Column Quality',
+                    stats: data.overview || data.rows?.[0] || null,
                 };
             }
         }
@@ -462,6 +505,7 @@ export default function ResultVisualization({ execution, data, request }) {
     if (model.kind === 'line') {
         return (
             <Panel title={model.title}>
+                {model.stats ? <div className="mb-4"><MetricGrid stats={model.stats} /></div> : null}
                 <LineChart points={model.points} xLabel={model.xLabel} yLabel={model.yLabel} />
             </Panel>
         );
@@ -470,6 +514,7 @@ export default function ResultVisualization({ execution, data, request }) {
     if (model.kind === 'bars') {
         return (
             <Panel title={model.title} subtitle={model.subtitle}>
+                {model.stats ? <div className="mb-4"><MetricGrid stats={model.stats} /></div> : null}
                 <BarList bars={model.bars} metricLabel={model.metricLabel} />
             </Panel>
         );
