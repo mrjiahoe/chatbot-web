@@ -4,10 +4,10 @@ import React, { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
+    AtSign,
     ArrowRight,
     Loader2,
     Lock,
-    Mail,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
@@ -17,7 +17,7 @@ import { Separator } from '@/components/ui/separator';
 import { signIn, signInWithGoogle } from '../lib/auth';
 
 export function LoginForm() {
-    const [email, setEmail] = useState('');
+    const [identifier, setIdentifier] = useState('');
     const [password, setPassword] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState(null);
@@ -29,7 +29,7 @@ export function LoginForm() {
         setError(null);
 
         const { error: signInError } = await signIn({
-            email: email.trim(),
+            identifier: identifier.trim(),
             password,
         });
 
@@ -87,7 +87,7 @@ export function LoginForm() {
                 <div className="relative">
                     <Separator />
                     <span className="absolute inset-x-0 top-1/2 -translate-y-1/2 mx-auto w-fit bg-card px-2 text-xs text-muted-foreground">
-                        Or continue with email
+                        Or continue with email or username
                     </span>
                 </div>
 
@@ -99,17 +99,17 @@ export function LoginForm() {
 
                 <form className="grid gap-4" onSubmit={handleLogin}>
                     <div className="grid gap-2">
-                        <Label htmlFor="email">Email</Label>
+                        <Label htmlFor="identifier">Email or username</Label>
                         <div className="relative">
-                            <Mail className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+                            <AtSign className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
                             <Input
-                                id="email"
-                                name="email"
-                                type="email"
-                                autoComplete="email"
-                                placeholder="name@company.com"
-                                value={email}
-                                onChange={(e) => setEmail(e.target.value)}
+                                id="identifier"
+                                name="identifier"
+                                type="text"
+                                autoComplete="username"
+                                placeholder="name@company.com or johndoe"
+                                value={identifier}
+                                onChange={(e) => setIdentifier(e.target.value)}
                                 className="pl-9"
                                 required
                             />

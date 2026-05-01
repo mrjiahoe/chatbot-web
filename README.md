@@ -33,6 +33,7 @@ Create a `.env.local` file with the following:
 ```env
 NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
 NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=your_supabase_publishable_key
+SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
 GOOGLE_GENERATIVE_AI_API_KEY=your_gemini_api_key
 
 # Optional: declare the allowed analytics schema for secure planning/validation
@@ -53,6 +54,10 @@ pip install pandas
 
 ### Database Setup
 Run the SQL scripts located in the artifacts directory (or see `ARCHITECTURE.md` for schema details) in your Supabase SQL Editor.
+
+### Username Login
+Username login now works through a server route that safely resolves `profiles.username` to the matching Supabase Auth user before signing in.
+Set `SUPABASE_SERVICE_ROLE_KEY` on the server for this to work. No extra Supabase schema change is required as long as `profiles.id` already matches `auth.users.id`.
 
 ## 📖 Learn More
 Check out [ARCHITECTURE.md](./ARCHITECTURE.md) for a deep dive into how everything works behind the scenes.

@@ -5,7 +5,7 @@ This document provides a deep dive into how the Data Analytic Chatbot works unde
 ## 1. Authentication & Onboarding Flow
 The app uses a strict "Gatekeeper" pattern to ensure every user has a completed profile before they can see the dashboard.
 
-1.  **Login**: User signs in via Email or Google.
+1.  **Login**: User signs in via Email, Username, or Google.
 2.  **Auth Callback**: Supabase handles the OAuth handshake and redirects back to the app.
 3.  **Route Guards**: Middleware redirects unauthenticated users away from protected entry points:
     -   `/` → `/welcome`
@@ -61,7 +61,7 @@ The chat endpoint now follows a structured-query pipeline instead of executing m
 
 ## 5. Database Schema Map
 -   **`auth.users`** (Internal): Managed by Supabase.
--   **`public.profiles`**: Custom user data (Username, Role, Onboarding Status). Linked to `auth.users.id`.
+-   **`public.profiles`**: Custom user data (Username, Role, Onboarding Status). Linked to `auth.users.id`, which also allows server-side username-to-auth resolution during login.
 -   **`public.user_files`**: Metadata for uploaded files (Filename, Storage Path).
 -   **`public.conversations`**: Stores chat threads.
 -   **`public.messages`**: Stores individual messages within a conversation.
