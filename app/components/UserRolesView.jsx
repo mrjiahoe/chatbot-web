@@ -4,6 +4,13 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, Loader2, RefreshCcw, ShieldCheck, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Switch } from '@/components/ui/switch';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -45,6 +52,7 @@ const baseAccountFlagColumns = [
 
 const UserRolesView = ({ currentRole }) => {
     const [users, setUsers] = useState([]);
+    const [schools, setSchools] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
     const [isRefreshing, setIsRefreshing] = useState(false);
     const [savingUserId, setSavingUserId] = useState(null);
@@ -87,6 +95,7 @@ const UserRolesView = ({ currentRole }) => {
             }
 
             setUsers(payload.users || []);
+            setSchools(payload.schools || []);
         } catch (loadError) {
             setError(loadError.message || 'Unable to load users.');
         } finally {
@@ -101,6 +110,35 @@ const UserRolesView = ({ currentRole }) => {
 
     const handleBaseAccountFlagChange = async (userId, flagKey, checked) => {
         const previousUsers = users;
+        const targetUser = users.find((user) => user.id === userId);
+
+        if (
+            flagKey === 'is_teacher' &&
+            checked === true &&
+            targetUser?.roleSource === 'base_account' &&
+            !targetUser?.schoolScopeId
+        ) {
+            setUsers((currentUsers) =>
+                currentUsers.map((user) =>
+                    user.id === userId
+                        ? {
+                            ...user,
+                            baseAccountFlags: {
+                                ...user.baseAccountFlags,
+                                is_teacher: true,
+                            },
+                            scopeWarning: 'Select a school to finish enabling Teacher access.',
+                        }
+                        : user
+                )
+            );
+            setBanner({
+                type: 'error',
+                text: 'Choose a school from the dropdown to complete Teacher access.',
+            });
+            return;
+        }
+
         setSavingUserId(userId);
         setBanner({ type: '', text: '' });
         setUsers((currentUsers) =>
@@ -112,6 +150,9 @@ const UserRolesView = ({ currentRole }) => {
                             ...user.baseAccountFlags,
                             [flagKey]: checked,
                         },
+                        ...(flagKey === 'is_teacher' && checked === false
+                            ? { scopeWarning: null }
+                            : {}),
                     }
                     : user
             )
@@ -148,15 +189,90 @@ const UserRolesView = ({ currentRole }) => {
                             effectiveRole: payload.user?.effectiveRole || user.effectiveRole,
                             roleSource: payload.user?.roleSource || user.roleSource,
                             baseAccountFlags: payload.user?.baseAccountFlags || user.baseAccountFlags,
+                            schoolScopeId: payload.user?.schoolScopeId ?? user.schoolScopeId,
+                            scopeWarning:
+                                payload.user?.baseAccountFlags?.is_teacher &&
+                                !(payload.user?.schoolScopeId ?? user.schoolScopeId)
+                                    ? 'Teacher accounts must have a school assignment.'
+                                    : null,
                         }
                         : user
                 )
             );
+            await loadUsers({ silent: true });
         } catch (updateError) {
             setUsers(previousUsers);
             setBanner({
                 type: 'error',
                 text: updateError.message || 'Unable to update access flags.',
+            });
+        } finally {
+            setSavingUserId(null);
+        }
+    };
+
+    const handleSchoolScopeChange = async (userId, schoolId) => {
+        const previousUsers = users;
+        const selectedSchool = schools.find((school) => school.id === schoolId);
+
+        setSavingUserId(userId);
+        setBanner({ type: '', text: '' });
+        setUsers((currentUsers) =>
+            currentUsers.map((user) =>
+                user.id === userId
+                    ? {
+                        ...user,
+                        schoolScopeId: schoolId,
+                        schoolScopeName: selectedSchool?.name || schoolId,
+                        scopeWarning: null,
+                    }
+                    : user
+            )
+        );
+
+        try {
+            const response = await fetch('/api/admin/users', {
+                method: 'PATCH',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    userId,
+                    schoolNameId: schoolId,
+                    baseAccountFlags: { is_teacher: true },
+                }),
+            });
+            const payload = await response.json().catch(() => ({}));
+
+            if (!response.ok) {
+                throw new Error(payload?.error || 'Unable to update school scope.');
+            }
+
+            setBanner({
+                type: 'success',
+                text: 'School scope updated successfully.',
+            });
+            setUsers((currentUsers) =>
+                currentUsers.map((user) =>
+                    user.id === userId
+                        ? {
+                            ...user,
+                            effectiveRole: payload.user?.effectiveRole || user.effectiveRole,
+                            roleSource: payload.user?.roleSource || user.roleSource,
+                            baseAccountFlags: payload.user?.baseAccountFlags || user.baseAccountFlags,
+                            schoolScopeId: payload.user?.schoolScopeId ?? schoolId,
+                            schoolScopeName: selectedSchool?.name || user.schoolScopeName,
+                            scopeWarning: null,
+                        }
+                        : user
+                )
+            );
+            await loadUsers({ silent: true });
+        } catch (updateError) {
+            setUsers(previousUsers);
+            setBanner({
+                type: 'error',
+                text: updateError.message || 'Unable to update school scope.',
             });
         } finally {
             setSavingUserId(null);
@@ -194,8 +310,8 @@ const UserRolesView = ({ currentRole }) => {
                         <h1 className="text-3xl font-semibold tracking-tight text-foreground">
                             User Role Management
                         </h1>
-                        <p className="max-w-3xl text-sm text-muted-foreground">
-                            Review users from Supabase Auth and manage RBAC entirely through `base_account` access flags.
+                                <p className="max-w-3xl text-sm text-muted-foreground">
+                            Review users from Supabase Auth and manage RBAC entirely through `base_account` access flags. Teacher accounts are single-school scoped through `school_name_id`.
                         </p>
                     </div>
 
@@ -238,7 +354,7 @@ const UserRolesView = ({ currentRole }) => {
                                     Team access
                                 </CardTitle>
                                 <CardDescription className="pt-1">
-                                    Linked users are managed with boolean access flags. Unlinked users stay inactive until they have a `base_account` record.
+                                    Linked users are managed with boolean access flags. Unlinked users stay inactive until they have a `base_account` record, and teachers must have exactly one school assignment.
                                 </CardDescription>
                             </div>
                             <div className="inline-flex items-center gap-2 rounded-full border border-border bg-background px-3 py-1 text-xs font-medium text-muted-foreground">
@@ -278,13 +394,13 @@ const UserRolesView = ({ currentRole }) => {
                                         <TableHead>Username</TableHead>
                                         <TableHead>Email</TableHead>
                                         <TableHead>Status</TableHead>
-                                        <TableHead>Source</TableHead>
                                         <TableHead>Joined</TableHead>
                                         {baseAccountFlagColumns.map((column) => (
                                             <TableHead key={column.key} className="text-center">
                                                 {column.label}
                                             </TableHead>
                                         ))}
+                                        <TableHead>School Scope</TableHead>
                                         <TableHead className="w-[220px]">Effective Role</TableHead>
                                     </TableRow>
                                 </TableHeader>
@@ -327,9 +443,6 @@ const UserRolesView = ({ currentRole }) => {
                                                     </span>
                                                 </TableCell>
                                                 <TableCell className="text-sm text-muted-foreground">
-                                                    {user.roleSource}
-                                                </TableCell>
-                                                <TableCell className="text-sm text-muted-foreground">
                                                     {formatDate(user.createdAt)}
                                                 </TableCell>
                                                 {baseAccountFlagColumns.map((column) => (
@@ -351,19 +464,56 @@ const UserRolesView = ({ currentRole }) => {
                                                     </TableCell>
                                                 ))}
                                                 <TableCell>
-                                                    <div className="space-y-1">
-                                                        <div className="inline-flex items-center rounded-full border border-border bg-muted px-2.5 py-1 text-xs font-medium text-foreground">
-                                                            {formatRoleLabel(user.effectiveRole)}
+                                                    {user.roleSource === 'base_account' ? (
+                                                        <div className="space-y-1">
+                                                            <div className="text-sm font-medium text-foreground">
+                                                                {user.schoolScopeName || 'No school assigned'}
+                                                            </div>
+                                                            <Select
+                                                                value={user.schoolScopeId || undefined}
+                                                                onValueChange={(value) => handleSchoolScopeChange(user.id, value)}
+                                                                disabled={
+                                                                    isSavingRow ||
+                                                                    !canEditRoles ||
+                                                                    !user.baseAccountFlags?.is_teacher
+                                                                }
+                                                            >
+                                                                <SelectTrigger
+                                                                    className="h-8 min-w-[180px] text-xs"
+                                                                    aria-label={`School scope for ${formatName(user)}`}
+                                                                >
+                                                                    <SelectValue
+                                                                        placeholder={
+                                                                            user.baseAccountFlags?.is_teacher
+                                                                                ? 'Select school'
+                                                                                : 'Enable Teacher first'
+                                                                        }
+                                                                    />
+                                                                </SelectTrigger>
+                                                                <SelectContent>
+                                                                    {schools.map((school) => (
+                                                                        <SelectItem key={school.id} value={school.id}>
+                                                                            {school.name}
+                                                                        </SelectItem>
+                                                                    ))}
+                                                                </SelectContent>
+                                                            </Select>
+                                                            <div className="text-xs text-muted-foreground">
+                                                                {user.schoolScopeId || 'school_name_id is null'}
+                                                            </div>
+                                                            {user.scopeWarning ? (
+                                                                <div className="text-xs font-medium text-amber-700 dark:text-amber-300">
+                                                                    {user.scopeWarning}
+                                                                </div>
+                                                            ) : null}
                                                         </div>
-                                                        {user.roleSource === 'base_account' ? (
-                                                            <p className="text-xs text-muted-foreground">
-                                                                Derived from `base_account` flags.
-                                                            </p>
-                                                        ) : (
-                                                            <p className="text-xs text-muted-foreground">
-                                                                No `base_account` link yet. This user remains inactive until linked.
-                                                            </p>
-                                                        )}
+                                                    ) : (
+                                                        <span className="text-xs text-muted-foreground">-</span>
+                                                    )}
+                                                </TableCell>
+                                                <TableCell>
+                                                    <div className="inline-flex items-center rounded-full border border-border bg-muted px-2.5 py-1 text-xs font-medium text-foreground">
+                                                        {formatRoleLabel(user.effectiveRole)}
                                                     </div>
                                                 </TableCell>
                                             </TableRow>

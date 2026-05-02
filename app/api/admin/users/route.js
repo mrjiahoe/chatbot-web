@@ -70,6 +70,18 @@ async function listAllUsers(admin) {
     return users;
 }
 
+async function fetchSchoolMap(admin) {
+    const { data, error } = await admin
+        .from('base_school')
+        .select('id, name');
+
+    if (error) {
+        return new Map();
+    }
+
+    return new Map((data || []).map((school) => [school.id, school.name]));
+}
+
 export async function GET() {
     try {
         const access = await requireRoleAccess();
@@ -79,11 +91,12 @@ export async function GET() {
         }
 
         const { admin, currentUserId, actorRole } = access;
-        const [users, profilesResponse] = await Promise.all([
+        const [users, profilesResponse, schoolMap] = await Promise.all([
             listAllUsers(admin),
             admin
                 .from('profiles')
                 .select('id, username, nickname, first_name, last_name, onboarding_completed'),
+            fetchSchoolMap(admin),
         ]);
         const authUserIds = users.map((authUser) => authUser.id);
         const baseAccountsByAuthUserId = await fetchBaseAccountsByAuthUserIds({
@@ -119,6 +132,15 @@ export async function GET() {
                 roleSource: accessProfile.roleSource,
                 baseAccountId: accessProfile.baseAccountId,
                 baseAccountFlags: accessProfile.baseAccount,
+                schoolScopeId: accessProfile.baseAccount?.school_name_id || null,
+                schoolScopeName: accessProfile.baseAccount?.school_name_id
+                    ? schoolMap.get(accessProfile.baseAccount.school_name_id) || accessProfile.baseAccount.school_name_id
+                    : null,
+                scopeWarning:
+                    accessProfile.baseAccount?.is_teacher &&
+                    !accessProfile.baseAccount?.school_name_id
+                        ? 'Teacher accounts must have a school assignment.'
+                        : null,
                 onboardingCompleted: Boolean(accessProfile.onboarding_completed),
                 createdAt: user.created_at,
                 lastSignInAt: user.last_sign_in_at,
@@ -128,6 +150,7 @@ export async function GET() {
 
         return NextResponse.json({
             users: mergedUsers,
+            schools: Array.from(schoolMap.entries()).map(([id, name]) => ({ id, name })),
         });
     } catch (error) {
         return NextResponse.json(
@@ -154,6 +177,9 @@ export async function PATCH(request) {
         const body = await request.json();
         const userId = body?.userId;
         const requestedBaseAccountFlags = body?.baseAccountFlags;
+        const requestedSchoolNameId = Object.prototype.hasOwnProperty.call(body || {}, 'schoolNameId')
+            ? body.schoolNameId
+            : undefined;
 
         if (!userId) {
             return NextResponse.json(
@@ -168,7 +194,10 @@ export async function PATCH(request) {
         });
         const baseAccount = baseAccountsByAuthUserId.get(userId) || null;
 
-        if (requestedBaseAccountFlags && typeof requestedBaseAccountFlags === 'object') {
+        const hasFlagPayload = requestedBaseAccountFlags && typeof requestedBaseAccountFlags === 'object';
+        const hasSchoolPayload = requestedSchoolNameId !== undefined;
+
+        if (hasFlagPayload || hasSchoolPayload) {
             if (!baseAccount) {
                 return NextResponse.json(
                     { error: 'This user is not linked to base_account.' },
@@ -176,16 +205,18 @@ export async function PATCH(request) {
                 );
             }
 
-            const flagKeys = Object.keys(requestedBaseAccountFlags);
+            const flagKeys = hasFlagPayload ? Object.keys(requestedBaseAccountFlags) : [];
 
-            if (!flagKeys.length) {
+            if (!hasSchoolPayload && !flagKeys.length) {
                 return NextResponse.json(
-                    { error: 'At least one base_account flag is required.' },
+                    { error: 'At least one base_account update is required.' },
                     { status: 400 }
                 );
             }
 
-            const hasInvalidFlag = flagKeys.some((key) => !BASE_ACCOUNT_FLAG_FIELDS.includes(key));
+            const hasInvalidFlag = hasFlagPayload
+                ? flagKeys.some((key) => !BASE_ACCOUNT_FLAG_FIELDS.includes(key))
+                : false;
 
             if (hasInvalidFlag) {
                 return NextResponse.json(
@@ -194,11 +225,44 @@ export async function PATCH(request) {
                 );
             }
 
-            const normalizedFlags = normalizeBaseAccountFlags(requestedBaseAccountFlags);
+            const normalizedFlags = hasFlagPayload
+                ? normalizeBaseAccountFlags(requestedBaseAccountFlags)
+                : {};
+            const mergedFlags = {
+                ...normalizeBaseAccountFlags(baseAccount),
+                ...normalizedFlags,
+            };
+            const normalizedSchoolNameId =
+                requestedSchoolNameId === undefined
+                    ? baseAccount.school_name_id
+                    : requestedSchoolNameId || null;
+
+            if (requestedSchoolNameId !== undefined && !mergedFlags.is_teacher) {
+                return NextResponse.json(
+                    {
+                        error: 'School assignment can only be changed when the Teacher flag is enabled.',
+                    },
+                    { status: 400 }
+                );
+            }
+
+            if (mergedFlags.is_teacher && !normalizedSchoolNameId) {
+                return NextResponse.json(
+                    {
+                        error: 'Teacher accounts must have exactly one assigned school in base_account.school_name_id before enabling the Teacher flag.',
+                    },
+                    { status: 400 }
+                );
+            }
 
             const { data: updatedBaseAccount, error } = await admin
                 .from('base_account')
-                .update(normalizedFlags)
+                .update({
+                    ...normalizedFlags,
+                    ...(requestedSchoolNameId !== undefined
+                        ? { school_name_id: normalizedSchoolNameId }
+                        : {}),
+                })
                 .eq('auth_user_id', userId)
                 .select()
                 .single();
@@ -217,10 +281,8 @@ export async function PATCH(request) {
                     id: userId,
                     effectiveRole,
                     roleSource: 'base_account',
-                    baseAccountFlags: {
-                        ...normalizeBaseAccountFlags(baseAccount),
-                        ...normalizedFlags,
-                    },
+                    baseAccountFlags: mergedFlags,
+                    schoolScopeId: updatedBaseAccount.school_name_id || null,
                 },
             });
         }
