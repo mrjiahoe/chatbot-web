@@ -1,9 +1,10 @@
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, Loader2, RefreshCcw, ShieldCheck, Users } from 'lucide-react';
+import { AlertTriangle, Loader2, RefreshCcw, Search, ShieldCheck, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
 import {
     Select,
     SelectContent,
@@ -58,6 +59,10 @@ const UserRolesView = ({ currentRole }) => {
     const [savingUserId, setSavingUserId] = useState(null);
     const [error, setError] = useState(null);
     const [banner, setBanner] = useState({ type: '', text: '' });
+    const [searchQuery, setSearchQuery] = useState('');
+    const [roleFilter, setRoleFilter] = useState('all');
+    const [linkFilter, setLinkFilter] = useState('all');
+    const [schoolFilter, setSchoolFilter] = useState('all');
     const hasAccess = canAccessRoleDashboard(currentRole);
     const canEditRoles = canManageUserRoles(currentRole);
 
@@ -69,6 +74,56 @@ const UserRolesView = ({ currentRole }) => {
         }),
         [users]
     );
+
+    const filterOptions = useMemo(() => {
+        const availableRoles = Array.from(
+            new Set(users.map((user) => user.effectiveRole).filter(Boolean))
+        ).sort((left, right) => formatRoleLabel(left).localeCompare(formatRoleLabel(right)));
+
+        return {
+            roles: availableRoles,
+            schools: [...schools].sort((left, right) => left.name.localeCompare(right.name)),
+        };
+    }, [schools, users]);
+
+    const filteredUsers = useMemo(() => {
+        const normalizedQuery = searchQuery.trim().toLowerCase();
+
+        return sortedUsers.filter((user) => {
+            const matchesSearch =
+                normalizedQuery.length === 0 ||
+                [
+                    formatName(user),
+                    user.username,
+                    user.nickname,
+                    user.email,
+                    user.schoolScopeName,
+                ]
+                    .filter(Boolean)
+                    .some((value) => value.toLowerCase().includes(normalizedQuery));
+
+            const matchesRole =
+                roleFilter === 'all' || user.effectiveRole === roleFilter;
+
+            const matchesLink =
+                linkFilter === 'all' ||
+                (linkFilter === 'linked' && user.roleSource === 'base_account') ||
+                (linkFilter === 'unlinked' && user.roleSource !== 'base_account');
+
+            const matchesSchool =
+                schoolFilter === 'all' ||
+                (schoolFilter === 'unassigned' && !user.schoolScopeId) ||
+                user.schoolScopeId === schoolFilter;
+
+            return matchesSearch && matchesRole && matchesLink && matchesSchool;
+        });
+    }, [linkFilter, roleFilter, schoolFilter, searchQuery, sortedUsers]);
+
+    const hasActiveFilters =
+        searchQuery.trim().length > 0 ||
+        roleFilter !== 'all' ||
+        linkFilter !== 'all' ||
+        schoolFilter !== 'all';
 
     const loadUsers = async ({ silent = false } = {}) => {
         if (!hasAccess) {
@@ -345,6 +400,13 @@ const UserRolesView = ({ currentRole }) => {
         }
     };
 
+    const resetFilters = () => {
+        setSearchQuery('');
+        setRoleFilter('all');
+        setLinkFilter('all');
+        setSchoolFilter('all');
+    };
+
     if (!hasAccess) {
         return (
             <div className="flex-1 overflow-y-auto bg-muted/30 p-6 md:p-10 animate-fade-in custom-scrollbar">
@@ -376,7 +438,7 @@ const UserRolesView = ({ currentRole }) => {
                         <h1 className="text-3xl font-semibold tracking-tight text-foreground">
                             User Role Management
                         </h1>
-                                <p className="max-w-3xl text-sm text-muted-foreground">
+                        <p className="max-w-3xl text-sm text-muted-foreground">
                             Review users from Supabase Auth and manage RBAC entirely through `base_account` access flags. Teacher accounts are single-school scoped through `school_name_id`.
                         </p>
                     </div>
@@ -425,7 +487,7 @@ const UserRolesView = ({ currentRole }) => {
                             </div>
                             <div className="inline-flex items-center gap-2 rounded-full border border-border bg-background px-3 py-1 text-xs font-medium text-muted-foreground">
                                 <Users className="size-3.5" />
-                                {sortedUsers.length} users
+                                {filteredUsers.length} of {sortedUsers.length} users
                             </div>
                         </div>
                     </CardHeader>
@@ -452,7 +514,74 @@ const UserRolesView = ({ currentRole }) => {
                                 <p className="text-sm font-medium text-muted-foreground">No users found yet.</p>
                             </div>
                         ) : (
-                            <div className="overflow-x-auto">
+                            <div className="space-y-4 p-4 md:p-6">
+                                <div className="grid gap-3 md:grid-cols-[minmax(260px,1.3fr)_minmax(150px,0.8fr)_minmax(150px,0.8fr)_minmax(180px,1fr)_auto]">
+                                    <div className="relative">
+                                        <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                                        <Input
+                                            value={searchQuery}
+                                            onChange={(event) => setSearchQuery(event.target.value)}
+                                            placeholder="Search name, username, email, or school"
+                                            className="pl-9"
+                                            aria-label="Search users"
+                                        />
+                                    </div>
+                                    <Select value={roleFilter} onValueChange={setRoleFilter}>
+                                        <SelectTrigger aria-label="Filter by role">
+                                            <SelectValue placeholder="All roles" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="all">All roles</SelectItem>
+                                            {filterOptions.roles.map((role) => (
+                                                <SelectItem key={role} value={role}>
+                                                    {formatRoleLabel(role)}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                    <Select value={linkFilter} onValueChange={setLinkFilter}>
+                                        <SelectTrigger aria-label="Filter by link status">
+                                            <SelectValue placeholder="All users" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="all">All users</SelectItem>
+                                            <SelectItem value="linked">Linked only</SelectItem>
+                                            <SelectItem value="unlinked">Unlinked only</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                    <Select value={schoolFilter} onValueChange={setSchoolFilter}>
+                                        <SelectTrigger aria-label="Filter by school scope">
+                                            <SelectValue placeholder="All schools" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="all">All schools</SelectItem>
+                                            <SelectItem value="unassigned">No school assigned</SelectItem>
+                                            {filterOptions.schools.map((school) => (
+                                                <SelectItem key={school.id} value={school.id}>
+                                                    {school.name}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                    <Button
+                                        type="button"
+                                        variant="ghost"
+                                        onClick={resetFilters}
+                                        disabled={!hasActiveFilters}
+                                    >
+                                        Reset
+                                    </Button>
+                                </div>
+
+                                {filteredUsers.length === 0 ? (
+                                    <div className="flex min-h-40 flex-col items-center justify-center rounded-lg border border-dashed border-border px-6 py-10 text-center">
+                                        <p className="text-sm font-medium text-foreground">No users match the current filters.</p>
+                                        <p className="mt-1 text-sm text-muted-foreground">
+                                            Try a broader search or reset the filters.
+                                        </p>
+                                    </div>
+                                ) : (
+                                    <div className="overflow-x-auto">
                                 <Table>
                                 <TableHeader>
                                     <TableRow>
@@ -471,7 +600,7 @@ const UserRolesView = ({ currentRole }) => {
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
-                                    {sortedUsers.map((user) => {
+                                    {filteredUsers.map((user) => {
                                         const isSavingRow = savingUserId === user.id;
 
                                         return (
@@ -599,6 +728,8 @@ const UserRolesView = ({ currentRole }) => {
                                     })}
                                 </TableBody>
                                 </Table>
+                                    </div>
+                                )}
                             </div>
                         )}
                     </CardContent>
