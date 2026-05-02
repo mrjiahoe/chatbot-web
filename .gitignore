@@ -81,3 +81,5 @@ ENV/
 # Cache directories
 .cache/
 .envrc
+
+artifacts/
