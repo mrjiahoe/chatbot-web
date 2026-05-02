@@ -263,19 +263,6 @@ export default function Page() {
     fetchChats();
   }, [canUseHistory, user?.id]);
 
-  const activeChatTitle = recentChats.find(c => c.id === activeChatId)?.title || 'Dashboard';
-
-  if (bootstrapError) {
-    return (
-      <div className="flex min-h-svh items-center justify-center bg-muted/30 p-6 md:p-10">
-        <div className="w-full max-w-xl rounded-2xl border border-red-200 bg-red-50 p-6 text-sm text-red-700 shadow-sm dark:border-red-900/30 dark:bg-red-950/20 dark:text-red-300">
-          <p className="font-semibold">Workspace failed to load</p>
-          <p className="mt-2 break-words">{bootstrapError}</p>
-        </div>
-      </div>
-    );
-  }
-
   useEffect(() => {
     const root = window.document.documentElement;
 
@@ -302,6 +289,19 @@ export default function Page() {
       return () => mediaQuery.removeEventListener('change', listener);
     }
   }, [theme]);
+
+  const activeChatTitle = recentChats.find(c => c.id === activeChatId)?.title || 'Dashboard';
+
+  if (bootstrapError) {
+    return (
+      <div className="flex min-h-svh items-center justify-center bg-muted/30 p-6 md:p-10">
+        <div className="w-full max-w-xl rounded-2xl border border-red-200 bg-red-50 p-6 text-sm text-red-700 shadow-sm dark:border-red-900/30 dark:bg-red-950/20 dark:text-red-300">
+          <p className="font-semibold">Workspace failed to load</p>
+          <p className="mt-2 break-words">{bootstrapError}</p>
+        </div>
+      </div>
+    );
+  }
 
   const handleNewChat = () => {
     if (!canUseChat) {

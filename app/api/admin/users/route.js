@@ -90,7 +90,7 @@ export async function GET() {
             return access.error;
         }
 
-        const { admin, currentUserId, actorRole } = access;
+        const { admin, currentUserId } = access;
         const [users, profilesResponse, schoolMap] = await Promise.all([
             listAllUsers(admin),
             admin
