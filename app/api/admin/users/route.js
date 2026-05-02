@@ -8,9 +8,7 @@ import {
 } from '@/lib/access';
 import { getSupabaseAdminClient } from '@/lib/supabase-admin';
 import { getServerSupabaseClient } from '@/lib/serverSupabase';
-import { canAccessRoleDashboard, canManageUserRoles, getAssignableRoleOptions, getRoleOptions, normalizeRole } from '@/lib/roles';
-
-const ALLOWED_ROLES = new Set(getRoleOptions().map((option) => option.value));
+import { canAccessRoleDashboard, canManageUserRoles, normalizeRole } from '@/lib/roles';
 
 async function requireRoleAccess() {
     const supabase = await getServerSupabaseClient();
@@ -85,7 +83,7 @@ export async function GET() {
             listAllUsers(admin),
             admin
                 .from('profiles')
-                .select('id, username, nickname, first_name, last_name, role, onboarding_completed'),
+                .select('id, username, nickname, first_name, last_name, onboarding_completed'),
         ]);
         const authUserIds = users.map((authUser) => authUser.id);
         const baseAccountsByAuthUserId = await fetchBaseAccountsByAuthUserIds({
@@ -130,7 +128,6 @@ export async function GET() {
 
         return NextResponse.json({
             users: mergedUsers,
-            assignableRoles: getAssignableRoleOptions(actorRole),
         });
     } catch (error) {
         return NextResponse.json(
@@ -156,12 +153,7 @@ export async function PATCH(request) {
         }
         const body = await request.json();
         const userId = body?.userId;
-        const requestedRole = body?.role;
         const requestedBaseAccountFlags = body?.baseAccountFlags;
-        const role = normalizeRole(requestedRole);
-        const assignableRoles = new Set(
-            getAssignableRoleOptions(actorRole).map((option) => option.value)
-        );
 
         if (!userId) {
             return NextResponse.json(
@@ -233,45 +225,10 @@ export async function PATCH(request) {
             });
         }
 
-        if (!requestedRole) {
-            return NextResponse.json(
-                { error: 'Role is required for profile-managed users.' },
-                { status: 400 }
-            );
-        }
-
-        if (!ALLOWED_ROLES.has(requestedRole) || !assignableRoles.has(requestedRole)) {
-            return NextResponse.json(
-                { error: 'Invalid role selected.' },
-                { status: 400 }
-            );
-        }
-
-        const { error } = await admin
-            .from('profiles')
-            .upsert(
-                {
-                    id: userId,
-                    role,
-                    updated_at: new Date().toISOString(),
-                },
-                {
-                    onConflict: 'id',
-                }
-            );
-
-        if (error) {
-            throw error;
-        }
-
-        return NextResponse.json({
-            user: {
-                id: userId,
-                role,
-                effectiveRole: role,
-                roleSource: 'profiles',
-            },
-        });
+        return NextResponse.json(
+            { error: 'RBAC is managed only through base_account flags now. Link this user to base_account first.' },
+            { status: 400 }
+        );
     } catch (error) {
         return NextResponse.json(
             {

@@ -61,6 +61,7 @@ export default function Page() {
   const [mounted, setMounted] = useState(false);
   const [user, setUser] = useState(null);
   const [profile, setProfile] = useState(null);
+  const [bootstrapError, setBootstrapError] = useState('');
   const [isLoadingChat, setIsLoadingChat] = useState(false);
   const router = useRouter();
 
@@ -70,31 +71,41 @@ export default function Page() {
 
     // This function checks if you are logged in and if your profile is finished
     const checkUser = async () => {
-      const { session } = await getSession(); // Read the current session first
+      try {
+        setBootstrapError('');
+        const { session } = await getSession(); // Read the current session first
 
-      if (!session?.user) {
-        // If the user is NOT logged in, send them to the welcome page
-        router.replace('/welcome');
-      } else {
-        // If they ARE logged in, save their basic info
-        const currentUser = session.user;
-        setUser(currentUser);
-
-        const accessProfile = await fetchCurrentAccessProfile({
-          supabase,
-          authUser: currentUser,
-        });
-        const profileData = accessProfile;
-
-        if (!profileData?.hasBaseAccount && !profileData?.hasProfile) {
-          // If the user has no linked account or profile record yet, use onboarding
-          // as the lightweight fallback path for creating their app profile.
-          router.replace('/onboarding');
-        } else if (!profileData.onboarding_completed) {
-          router.replace('/onboarding');
+        if (!session?.user) {
+          // If the user is NOT logged in, send them to the welcome page
+          router.replace('/welcome');
         } else {
-          setProfile(profileData);
+          // If they ARE logged in, save their basic info
+          const currentUser = session.user;
+          setUser(currentUser);
+
+          const accessProfile = await fetchCurrentAccessProfile({
+            supabase,
+            authUser: currentUser,
+          });
+          const profileData = accessProfile;
+
+          if (!profileData?.hasBaseAccount && !profileData?.hasProfile) {
+            // If the user has no linked account or profile record yet, use onboarding
+            // as the lightweight fallback path for creating their app profile.
+            router.replace('/onboarding');
+          } else if (!profileData.onboarding_completed) {
+            router.replace('/onboarding');
+          } else {
+            setProfile(profileData);
+          }
         }
+      } catch (error) {
+        console.error('Failed to bootstrap session:', error);
+        setBootstrapError(
+          error instanceof Error
+            ? error.message
+            : error?.message || 'Unable to load your workspace right now.'
+        );
       }
     };
 
@@ -121,18 +132,28 @@ export default function Page() {
     'Help',
   ];
   const defaultWorkspaceTab = accessibleTabs[0] || 'Help';
+  const activeTabStorageKey = user?.id ? `activeTab:${user.id}` : null;
+  const activeChatStorageKey = user?.id ? `activeChatId:${user.id}` : null;
 
-  // Persist and restore activeTab from localStorage
+  // Persist and restore activeTab from localStorage per user
   useEffect(() => {
-    const savedTab = localStorage.getItem('activeTab');
+    if (!activeTabStorageKey) {
+      return;
+    }
+
+    const savedTab = localStorage.getItem(activeTabStorageKey);
     if (savedTab) {
       setActiveTab(savedTab === 'Personalization' ? 'Settings' : savedTab);
     }
-  }, []);
+  }, [activeTabStorageKey]);
 
   useEffect(() => {
-    localStorage.setItem('activeTab', activeTab);
-  }, [activeTab]);
+    if (!activeTabStorageKey) {
+      return;
+    }
+
+    localStorage.setItem(activeTabStorageKey, activeTab);
+  }, [activeTab, activeTabStorageKey]);
 
   useEffect(() => {
     if (!accessibleTabs.includes(activeTab)) {
@@ -140,17 +161,35 @@ export default function Page() {
     }
   }, [activeTab, accessibleTabs, defaultWorkspaceTab]);
 
-  // Persist and restore activeChatId from localStorage
+  // Persist and restore activeChatId from localStorage per user
   useEffect(() => {
-    const savedChatId = localStorage.getItem('activeChatId');
+    if (!activeChatStorageKey) {
+      return;
+    }
+
+    const savedChatId = localStorage.getItem(activeChatStorageKey);
     if (savedChatId && savedChatId !== 'null') {
       setActiveChatId(savedChatId);
+    } else {
+      setActiveChatId(null);
     }
-  }, []);
+  }, [activeChatStorageKey]);
 
   useEffect(() => {
-    localStorage.setItem('activeChatId', activeChatId || 'null');
-  }, [activeChatId]);
+    if (!activeChatStorageKey) {
+      return;
+    }
+
+    localStorage.setItem(activeChatStorageKey, activeChatId || 'null');
+  }, [activeChatId, activeChatStorageKey]);
+
+  useEffect(() => {
+    if (!user?.id) {
+      setMessages([]);
+      setRecentChats([]);
+      setActiveChatId(null);
+    }
+  }, [user?.id]);
 
   // Load messages for restored chat
   useEffect(() => {
@@ -158,9 +197,26 @@ export default function Page() {
       return;
     }
 
-    if (activeChatId && messages.length === 0) {
+    if (activeChatId && messages.length === 0 && user?.id) {
       setIsLoadingChat(true);
       const loadMessages = async () => {
+        const { data: conversation, error: conversationError } = await supabase
+          .from('conversations')
+          .select('id')
+          .eq('id', activeChatId)
+          .eq('user_id', user.id)
+          .maybeSingle();
+
+        if (conversationError || !conversation) {
+          if (conversationError) {
+            console.error('Error verifying conversation ownership:', conversationError);
+          }
+          setMessages([]);
+          setActiveChatId(null);
+          setIsLoadingChat(false);
+          return;
+        }
+
         const { data, error } = await supabase
           .from('messages')
           .select('*')
@@ -177,10 +233,10 @@ export default function Page() {
       };
       loadMessages();
     }
-  }, [activeChatId, canUseHistory, messages.length]);
+  }, [activeChatId, canUseHistory, messages.length, user?.id]);
 
   useEffect(() => {
-    if (!canUseHistory) {
+    if (!canUseHistory || !user?.id) {
       setRecentChats([]);
       setActiveChatId(null);
       setMessages([]);
@@ -191,6 +247,7 @@ export default function Page() {
       const { data, error } = await supabase
         .from('conversations')
         .select('*')
+        .eq('user_id', user.id)
         .order('updated_at', { ascending: false });
 
       if (error) {
@@ -204,9 +261,20 @@ export default function Page() {
       }
     };
     fetchChats();
-  }, [canUseHistory]);
+  }, [canUseHistory, user?.id]);
 
   const activeChatTitle = recentChats.find(c => c.id === activeChatId)?.title || 'Dashboard';
+
+  if (bootstrapError) {
+    return (
+      <div className="flex min-h-svh items-center justify-center bg-muted/30 p-6 md:p-10">
+        <div className="w-full max-w-xl rounded-2xl border border-red-200 bg-red-50 p-6 text-sm text-red-700 shadow-sm dark:border-red-900/30 dark:bg-red-950/20 dark:text-red-300">
+          <p className="font-semibold">Workspace failed to load</p>
+          <p className="mt-2 break-words">{bootstrapError}</p>
+        </div>
+      </div>
+    );
+  }
 
   useEffect(() => {
     const root = window.document.documentElement;
@@ -247,7 +315,7 @@ export default function Page() {
   };
 
   const handleSelectChat = async (chatId) => {
-    if (!canUseHistory || !canUseChat) {
+    if (!canUseHistory || !canUseChat || !user?.id) {
       setActiveTab(defaultWorkspaceTab);
       return;
     }
@@ -255,6 +323,23 @@ export default function Page() {
     setActiveTab('Chat');
     setActiveChatId(chatId);
     setIsLoadingChat(true);
+
+    const { data: conversation, error: conversationError } = await supabase
+      .from('conversations')
+      .select('id')
+      .eq('id', chatId)
+      .eq('user_id', user.id)
+      .maybeSingle();
+
+    if (conversationError || !conversation) {
+      if (conversationError) {
+        console.error('Error verifying conversation ownership:', conversationError);
+      }
+      setMessages([]);
+      setActiveChatId(null);
+      setIsLoadingChat(false);
+      return;
+    }
 
     const { data, error } = await supabase
       .from('messages')
@@ -273,10 +358,15 @@ export default function Page() {
   };
 
   const handleRenameChat = async (chatId, newTitle) => {
+    if (!user?.id) {
+      return;
+    }
+
     const { error } = await supabase
       .from('conversations')
       .update({ title: newTitle })
-      .eq('id', chatId);
+      .eq('id', chatId)
+      .eq('user_id', user.id);
 
     if (error) {
       console.error('Error renaming chat:', error);
@@ -288,10 +378,15 @@ export default function Page() {
   };
 
   const handleDeleteChat = async (chatId) => {
+    if (!user?.id) {
+      return;
+    }
+
     const { error } = await supabase
       .from('conversations')
       .delete()
-      .eq('id', chatId);
+      .eq('id', chatId)
+      .eq('user_id', user.id);
 
     if (error) {
       console.error('Error deleting chat:', error);
@@ -310,6 +405,9 @@ export default function Page() {
   };
 
   const handleLogout = async () => {
+    setMessages([]);
+    setRecentChats([]);
+    setActiveChatId(null);
     await signOut();
     router.push('/login');
   };
@@ -357,8 +455,8 @@ export default function Page() {
                 onConversationCreated={(id) => {
                   setActiveChatId(id);
                   // Refresh chats list
-                  if (canUseHistory) {
-                    supabase.from('conversations').select('*').order('updated_at', { ascending: false })
+                  if (canUseHistory && user?.id) {
+                    supabase.from('conversations').select('*').eq('user_id', user.id).order('updated_at', { ascending: false })
                       .then(({ data }) => {
                         if (data) setRecentChats(data.map(c => ({
                           id: c.id,

@@ -4,11 +4,10 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, Loader2, RefreshCcw, ShieldCheck, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Switch } from '@/components/ui/switch';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { canAccessRoleDashboard, canManageUserRoles, formatRoleLabel, getAssignableRoleOptions } from '@/lib/roles';
+import { canAccessRoleDashboard, canManageUserRoles, formatRoleLabel } from '@/lib/roles';
 
 function formatDate(value) {
     if (!value) {
@@ -46,7 +45,6 @@ const baseAccountFlagColumns = [
 
 const UserRolesView = ({ currentRole }) => {
     const [users, setUsers] = useState([]);
-    const [assignableRoles, setAssignableRoles] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
     const [isRefreshing, setIsRefreshing] = useState(false);
     const [savingUserId, setSavingUserId] = useState(null);
@@ -89,7 +87,6 @@ const UserRolesView = ({ currentRole }) => {
             }
 
             setUsers(payload.users || []);
-            setAssignableRoles(payload.assignableRoles || getAssignableRoleOptions(currentRole));
         } catch (loadError) {
             setError(loadError.message || 'Unable to load users.');
         } finally {
@@ -166,65 +163,6 @@ const UserRolesView = ({ currentRole }) => {
         }
     };
 
-    const handleRoleChange = async (userId, nextRole) => {
-        const previousUsers = users;
-        setSavingUserId(userId);
-        setBanner({ type: '', text: '' });
-        setUsers((currentUsers) =>
-            currentUsers.map((user) =>
-                user.id === userId
-                    ? {
-                        ...user,
-                        role: nextRole,
-                    }
-                    : user
-            )
-        );
-
-        try {
-            const response = await fetch('/api/admin/users', {
-                method: 'PATCH',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    userId,
-                    role: nextRole,
-                }),
-            });
-            const payload = await response.json().catch(() => ({}));
-
-            if (!response.ok) {
-                throw new Error(payload?.error || 'Unable to update role.');
-            }
-
-            setBanner({
-                type: 'success',
-                text: 'Role updated successfully.',
-            });
-            setUsers((currentUsers) =>
-                currentUsers.map((user) =>
-                    user.id === userId
-                        ? {
-                            ...user,
-                            role: payload.user?.role || nextRole,
-                            effectiveRole: payload.user?.effectiveRole || nextRole,
-                            roleSource: payload.user?.roleSource || 'profiles',
-                        }
-                        : user
-                )
-            );
-        } catch (updateError) {
-            setUsers(previousUsers);
-            setBanner({
-                type: 'error',
-                text: updateError.message || 'Unable to update role.',
-            });
-        } finally {
-            setSavingUserId(null);
-        }
-    };
-
     if (!hasAccess) {
         return (
             <div className="flex-1 overflow-y-auto bg-muted/30 p-6 md:p-10 animate-fade-in custom-scrollbar">
@@ -257,7 +195,7 @@ const UserRolesView = ({ currentRole }) => {
                             User Role Management
                         </h1>
                         <p className="max-w-3xl text-sm text-muted-foreground">
-                            Review users from Supabase Auth, edit `base_account` access flags, and keep a simple fallback role for users who are not linked yet.
+                            Review users from Supabase Auth and manage RBAC entirely through `base_account` access flags.
                         </p>
                     </div>
 
@@ -287,7 +225,7 @@ const UserRolesView = ({ currentRole }) => {
 
                 {!canEditRoles ? (
                     <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-900/30 dark:bg-amber-950/20 dark:text-amber-200">
-                        Your current effective role is <span className="font-semibold">{formatRoleLabel(currentRole)}</span>. This role can view the dashboard but cannot edit access flags. To tick these switches, your own linked account must resolve to <span className="font-semibold">Super Admin</span> or <span className="font-semibold">Owner</span>.
+                        Your current effective role is <span className="font-semibold">{formatRoleLabel(currentRole)}</span>. Only linked <span className="font-semibold">Super Admin</span> accounts can edit access flags.
                     </div>
                 ) : null}
 
@@ -300,7 +238,7 @@ const UserRolesView = ({ currentRole }) => {
                                     Team access
                                 </CardTitle>
                                 <CardDescription className="pt-1">
-                                    Base-account users are managed with boolean access flags. Profile-only users still use the legacy role dropdown.
+                                    Linked users are managed with boolean access flags. Unlinked users stay inactive until they have a `base_account` record.
                                 </CardDescription>
                             </div>
                             <div className="inline-flex items-center gap-2 rounded-full border border-border bg-background px-3 py-1 text-xs font-medium text-muted-foreground">
@@ -389,7 +327,7 @@ const UserRolesView = ({ currentRole }) => {
                                                     </span>
                                                 </TableCell>
                                                 <TableCell className="text-sm text-muted-foreground">
-                                                    {user.roleSource === 'base_account' ? 'base_account' : 'profiles'}
+                                                    {user.roleSource}
                                                 </TableCell>
                                                 <TableCell className="text-sm text-muted-foreground">
                                                     {formatDate(user.createdAt)}
@@ -422,35 +360,9 @@ const UserRolesView = ({ currentRole }) => {
                                                                 Derived from `base_account` flags.
                                                             </p>
                                                         ) : (
-                                                            <div className="space-y-1">
-                                                                <Select
-                                                                    value={user.role || 'user'}
-                                                                    onValueChange={(value) => handleRoleChange(user.id, value)}
-                                                                    disabled={isSavingRow || !canEditRoles}
-                                                                >
-                                                                    <SelectTrigger className="w-full bg-background">
-                                                                        <SelectValue placeholder="Select role" />
-                                                                    </SelectTrigger>
-                                                                    <SelectContent align="end">
-                                                                        {assignableRoles.map((roleOption) => (
-                                                                            <SelectItem key={roleOption.value} value={roleOption.value}>
-                                                                                {roleOption.label}
-                                                                            </SelectItem>
-                                                                        ))}
-                                                                    </SelectContent>
-                                                                </Select>
-                                                                {isSavingRow ? (
-                                                                    <p className="text-xs text-muted-foreground">Saving access change...</p>
-                                                                ) : !canEditRoles ? (
-                                                                    <p className="text-xs text-muted-foreground">
-                                                                        {formatRoleLabel(currentRole)} cannot edit roles.
-                                                                    </p>
-                                                                ) : (
-                                                                    <p className="text-xs text-muted-foreground">
-                                                                        Fallback role for users without `base_account`.
-                                                                    </p>
-                                                                )}
-                                                            </div>
+                                                            <p className="text-xs text-muted-foreground">
+                                                                No `base_account` link yet. This user remains inactive until linked.
+                                                            </p>
                                                         )}
                                                     </div>
                                                 </TableCell>

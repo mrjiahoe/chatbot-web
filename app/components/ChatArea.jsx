@@ -48,32 +48,16 @@ const ChatArea = ({ messages, setMessages, onViewHistory, activeChatId, onConver
     const fetchAvailableTables = async () => {
         setIsFetchingTables(true);
         try {
-            const { data, error } = await supabase
-                .from('chatbot_schema_registry')
-                .select('table_name, column_name, column_type')
-                .eq('enabled', true)
-                .order('table_name', { ascending: true })
-                .order('column_name', { ascending: true });
-
-            if (error) throw error;
-
-            // Group columns by table
-            const groupedTables = new Map();
-            data?.forEach((row) => {
-                const tableName = row.table_name;
-                if (!groupedTables.has(tableName)) {
-                    groupedTables.set(tableName, {
-                        name: tableName,
-                        columns: []
-                    });
-                }
-                groupedTables.get(tableName).columns.push({
-                    name: row.column_name,
-                    type: row.column_type
-                });
+            const response = await fetch('/api/schema/tables', {
+                cache: 'no-store',
             });
+            const payload = await response.json().catch(() => ({}));
 
-            setAvailableTables(Array.from(groupedTables.values()));
+            if (!response.ok) {
+                throw new Error(payload?.error || 'Failed to load schema tables.');
+            }
+
+            setAvailableTables(payload.tables || []);
         } catch (err) {
             console.error('Error fetching tables:', err);
         } finally {

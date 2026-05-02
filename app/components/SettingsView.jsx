@@ -57,7 +57,7 @@ const SettingsView = ({ onProfileUpdate, theme, setTheme }) => {
         role: 'user',
         onboardingCompleted: true,
     });
-    const [profileSource, setProfileSource] = useState('profiles');
+    const [profileSource, setProfileSource] = useState('unlinked');
     const [bio, setBio] = useState(() =>
         typeof window !== 'undefined'
             ? localStorage.getItem('workspaceBio') || 'Experienced data analyst with a passion for insights and visualization.'
@@ -79,26 +79,36 @@ const SettingsView = ({ onProfileUpdate, theme, setTheme }) => {
 
     useEffect(() => {
         const fetchProfile = async () => {
-            const { user } = await getUser();
+            try {
+                const { user } = await getUser();
 
-            if (user) {
-                const data = await fetchCurrentAccessProfile({
-                    supabase,
-                    authUser: user,
-                });
-
-                if (data) {
-                    setProfileSource(data.roleSource || (data.hasBaseAccount ? 'base_account' : 'profiles'));
-                    setProfile({
-                        username: data.username || '',
-                        nickname: data.nickname || '',
-                        firstName: data.first_name || '',
-                        lastName: data.last_name || '',
-                        email: data.email || user.email || '',
-                        role: data.effectiveRole || data.role || 'user',
-                        onboardingCompleted: data.onboarding_completed,
+                if (user) {
+                    const data = await fetchCurrentAccessProfile({
+                        supabase,
+                        authUser: user,
                     });
+
+                    if (data) {
+                        setProfileSource(data.roleSource || (data.hasBaseAccount ? 'base_account' : 'unlinked'));
+                        setProfile({
+                            username: data.username || '',
+                            nickname: data.nickname || '',
+                            firstName: data.first_name || '',
+                            lastName: data.last_name || '',
+                            email: data.email || user.email || '',
+                            role: data.effectiveRole || data.role || 'user',
+                            onboardingCompleted: data.onboarding_completed,
+                        });
+                    }
                 }
+            } catch (loadError) {
+                console.error('Failed to load settings profile:', loadError);
+                setMessage({
+                    type: 'error',
+                    text: loadError instanceof Error
+                        ? loadError.message
+                        : loadError?.message || 'Unable to load settings right now.',
+                });
             }
 
             setIsLoading(false);

@@ -22,21 +22,30 @@ export default function OnboardingPage() {
 
     useEffect(() => {
         const checkSession = async () => {
-            const { session } = await getSession();
-            const user = session?.user;
+            try {
+                const { session } = await getSession();
+                const user = session?.user;
 
-            if (!user) {
-                router.replace('/welcome');
-                return;
-            }
+                if (!user) {
+                    router.replace('/welcome');
+                    return;
+                }
 
-            const accessProfile = await fetchCurrentAccessProfile({
-                supabase,
-                authUser: user,
-            });
+                const accessProfile = await fetchCurrentAccessProfile({
+                    supabase,
+                    authUser: user,
+                });
 
-            if (accessProfile?.onboarding_completed) {
-                router.replace('/');
+                if (accessProfile?.onboarding_completed) {
+                    router.replace('/');
+                }
+            } catch (loadError) {
+                console.error('Failed to load onboarding profile:', loadError);
+                setError(
+                    loadError instanceof Error
+                        ? loadError.message
+                        : loadError?.message || 'Unable to load onboarding right now.'
+                );
             }
         };
 

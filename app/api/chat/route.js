@@ -4,6 +4,7 @@ import { fetchCurrentAccessProfile } from '../../../lib/access.js';
 import { handleStructuredChat } from '../../../lib/controller.js';
 import { generateTitle } from '../../../lib/aiService.js';
 import { getServerSupabaseClient } from '../../../lib/serverSupabase.js';
+import { getSupabaseAdminClient } from '../../../lib/supabase-admin.js';
 import { canAccessChat, canUseChatDataContext } from '../../../lib/roles.js';
 import {
     CHAT_DATA_CONTEXT_TOO_LONG,
@@ -118,16 +119,30 @@ async function persistMessage({ supabase, conversationId, role, content, tokenUs
 
     // Message persistence is intentionally best-effort so the user still gets a
     // response even if chat history storage has a transient problem.
-    const { error } = await supabase
+    const fullPayload = {
+        conversation_id: conversationId,
+        role,
+        content,
+        token_usage: tokenUsage,
+        generated_sql: generatedSql,
+        generated_json: generatedJson,
+    };
+    let { error } = await supabase
         .from('messages')
-        .insert({
+        .insert(fullPayload);
+
+    if (error?.code === 'PGRST204') {
+        const fallbackPayload = {
             conversation_id: conversationId,
             role,
             content,
-            token_usage: tokenUsage, // Store token metadata as JSONB
-            generated_sql: generatedSql, // Store generated SQL
-            generated_json: generatedJson, // Store generated JSON request
-        });
+        };
+
+        const retry = await supabase
+            .from('messages')
+            .insert(fallbackPayload);
+        error = retry.error;
+    }
 
     if (error) {
         console.error(`Failed to save ${role} message:`, error);
@@ -173,6 +188,13 @@ export async function POST(req) {
             throw httpError(403, 'You do not have permission to add database context to chat.');
         }
 
+        let registrySupabase = supabase;
+        try {
+            registrySupabase = getSupabaseAdminClient();
+        } catch (registryError) {
+            console.warn('Falling back to session client for schema registry:', registryError);
+        }
+
         // We always persist into a conversation thread so the frontend can keep
         // using the existing chat-history UX regardless of response type.
         const currentConversationId = await ensureConversation({
@@ -196,6 +218,7 @@ export async function POST(req) {
             history,
             dataContext,
             supabase,
+            registrySupabase,
         });
 
         await persistMessage({

@@ -2,7 +2,6 @@
 
 import React, { useEffect, useState } from 'react';
 import { AlertTriangle, Database, Eye, Loader2, Rows3, Server } from 'lucide-react';
-import { supabase } from '../../lib/supabase';
 import FilePreviewModal from './FilePreviewModal';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -30,31 +29,16 @@ const DataView = ({ currentRole }) => {
 
     const fetchTables = async () => {
         try {
-            const { data, error } = await supabase
-                .from('chatbot_schema_registry')
-                .select('table_name, column_name, column_type')
-                .eq('enabled', true)
-                .order('table_name', { ascending: true })
-                .order('column_name', { ascending: true });
-
-            if (error) throw error;
-
-            const groupedTables = new Map();
-            data?.forEach((row) => {
-                const tableName = row.table_name;
-                if (!groupedTables.has(tableName)) {
-                    groupedTables.set(tableName, {
-                        name: tableName,
-                        columns: [],
-                    });
-                }
-                groupedTables.get(tableName).columns.push({
-                    name: row.column_name,
-                    type: row.column_type,
-                });
+            const response = await fetch('/api/schema/tables', {
+                cache: 'no-store',
             });
+            const payload = await response.json().catch(() => ({}));
 
-            setTables(Array.from(groupedTables.values()));
+            if (!response.ok) {
+                throw new Error(payload?.error || 'Failed to load schema tables.');
+            }
+
+            setTables(payload.tables || []);
         } catch (err) {
             console.error('Error fetching tables:', err);
             setError('Failed to load database tables.');
@@ -73,20 +57,25 @@ const DataView = ({ currentRole }) => {
         setSelectedTableName(table.name);
 
         try {
-            const { data, error } = await supabase
-                .from(table.name)
-                .select('*')
-                .limit(25);
+            const response = await fetch(
+                `/api/schema/preview?table=${encodeURIComponent(table.name)}&limit=25`,
+                {
+                    cache: 'no-store',
+                }
+            );
+            const payload = await response.json().catch(() => ({}));
 
-            if (error) throw error;
+            if (!response.ok) {
+                throw new Error(payload?.error || 'Failed to load table preview.');
+            }
 
             setPreviewData({
-                columns: table.columns.map((col) => col.name),
-                rows: data || [],
+                columns: payload.columns || table.columns.map((col) => col.name),
+                rows: payload.rows || [],
             });
         } catch (err) {
             console.error('Preview error:', err);
-            setError('Failed to load table preview.');
+            setError(err instanceof Error ? err.message : 'Failed to load table preview.');
         } finally {
             setIsPreviewLoading(false);
         }
@@ -175,7 +164,7 @@ const DataView = ({ currentRole }) => {
                                 </div>
                                 <h3 className="text-base font-semibold text-foreground">No database tables available</h3>
                                 <p className="mt-2 max-w-sm text-sm text-muted-foreground">
-                                    Wait for your schema registry to populate.
+                                    Populate `chatbot_schema_registry` or set `CHATBOT_ALLOWED_SCHEMA` so the app knows which tables to expose.
                                 </p>
                             </div>
                         ) : (
