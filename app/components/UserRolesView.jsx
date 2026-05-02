@@ -101,6 +101,46 @@ function buildConfirmationConfig({ actionType, userName, flagKey = null }) {
     return null;
 }
 
+function buildBulkConfirmationConfig({ actionType, count, flagKey = null }) {
+    if (actionType === 'clear_school_scope') {
+        return {
+            title: `Clear school assignments for ${count} user${count === 1 ? '' : 's'}?`,
+            description: 'Selected users will no longer have a school linked in base_account.school_name_id.',
+            confirmLabel: 'Clear assignments',
+            confirmVariant: 'destructive',
+        };
+    }
+
+    if (flagKey === 'is_teacher') {
+        return {
+            title: `Remove Teacher access for ${count} user${count === 1 ? '' : 's'}?`,
+            description: 'Selected users will immediately lose teacher-scoped access until Teacher is enabled again.',
+            confirmLabel: 'Remove Teacher',
+            confirmVariant: 'destructive',
+        };
+    }
+
+    if (flagKey === 'is_superuser') {
+        return {
+            title: `Grant Super Admin access to ${count} user${count === 1 ? '' : 's'}?`,
+            description: 'Selected users will gain the highest level of administrative access in the workspace.',
+            confirmLabel: 'Grant Super Admin',
+            confirmVariant: 'default',
+        };
+    }
+
+    if (flagKey === 'is_admin') {
+        return {
+            title: `Grant Admin access to ${count} user${count === 1 ? '' : 's'}?`,
+            description: 'Selected users will gain elevated administrative access across the workspace.',
+            confirmLabel: 'Grant Admin',
+            confirmVariant: 'default',
+        };
+    }
+
+    return null;
+}
+
 const UserRolesView = ({ currentRole }) => {
     const [users, setUsers] = useState([]);
     const [schools, setSchools] = useState([]);
@@ -113,6 +153,11 @@ const UserRolesView = ({ currentRole }) => {
     const [roleFilter, setRoleFilter] = useState('all');
     const [linkFilter, setLinkFilter] = useState('all');
     const [schoolFilter, setSchoolFilter] = useState('all');
+    const [selectedUserIds, setSelectedUserIds] = useState([]);
+    const [bulkFlagKey, setBulkFlagKey] = useState('is_active');
+    const [bulkFlagValue, setBulkFlagValue] = useState('true');
+    const [bulkSchoolId, setBulkSchoolId] = useState('');
+    const [isBulkSaving, setIsBulkSaving] = useState(false);
     const [pendingConfirmation, setPendingConfirmation] = useState(null);
     const hasAccess = canAccessRoleDashboard(currentRole);
     const canEditRoles = canManageUserRoles(currentRole);
@@ -176,6 +221,27 @@ const UserRolesView = ({ currentRole }) => {
         linkFilter !== 'all' ||
         schoolFilter !== 'all';
 
+    const selectedUsers = useMemo(
+        () => users.filter((user) => selectedUserIds.includes(user.id)),
+        [selectedUserIds, users]
+    );
+
+    const selectedLinkedUsers = useMemo(
+        () => selectedUsers.filter((user) => user.roleSource === 'base_account'),
+        [selectedUsers]
+    );
+
+    const selectableFilteredUsers = useMemo(
+        () => filteredUsers.filter((user) => user.roleSource === 'base_account'),
+        [filteredUsers]
+    );
+
+    const allVisibleLinkedSelected =
+        selectableFilteredUsers.length > 0 &&
+        selectableFilteredUsers.every((user) => selectedUserIds.includes(user.id));
+
+    const bulkTeacherNeedsSchool = bulkFlagKey === 'is_teacher' && bulkFlagValue === 'true';
+
     const loadUsers = async ({ silent = false } = {}) => {
         if (!hasAccess) {
             setIsLoading(false);
@@ -213,6 +279,33 @@ const UserRolesView = ({ currentRole }) => {
     useEffect(() => {
         loadUsers();
     }, [hasAccess]);
+
+    useEffect(() => {
+        setSelectedUserIds((currentIds) =>
+            currentIds.filter((id) => users.some((user) => user.id === id))
+        );
+    }, [users]);
+
+    const patchAdminUser = async ({ userId, baseAccountFlags, schoolNameId, fallbackErrorMessage }) => {
+        const response = await fetch('/api/admin/users', {
+            method: 'PATCH',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                userId,
+                ...(baseAccountFlags ? { baseAccountFlags } : {}),
+                ...(schoolNameId !== undefined ? { schoolNameId } : {}),
+            }),
+        });
+        const payload = await response.json().catch(() => ({}));
+
+        if (!response.ok) {
+            throw new Error(payload?.error || fallbackErrorMessage);
+        }
+
+        return payload.user;
+    };
 
     const executeBaseAccountFlagChange = async (userId, flagKey, checked) => {
         const previousUsers = users;
@@ -265,23 +358,13 @@ const UserRolesView = ({ currentRole }) => {
         );
 
         try {
-            const response = await fetch('/api/admin/users', {
-                method: 'PATCH',
-                headers: {
-                    'Content-Type': 'application/json',
+            const updatedUser = await patchAdminUser({
+                userId,
+                baseAccountFlags: {
+                    [flagKey]: checked,
                 },
-                body: JSON.stringify({
-                    userId,
-                    baseAccountFlags: {
-                        [flagKey]: checked,
-                    },
-                }),
+                fallbackErrorMessage: 'Unable to update access flags.',
             });
-            const payload = await response.json().catch(() => ({}));
-
-            if (!response.ok) {
-                throw new Error(payload?.error || 'Unable to update access flags.');
-            }
 
             setBanner({
                 type: 'success',
@@ -292,13 +375,13 @@ const UserRolesView = ({ currentRole }) => {
                     user.id === userId
                         ? {
                             ...user,
-                            effectiveRole: payload.user?.effectiveRole || user.effectiveRole,
-                            roleSource: payload.user?.roleSource || user.roleSource,
-                            baseAccountFlags: payload.user?.baseAccountFlags || user.baseAccountFlags,
-                            schoolScopeId: payload.user?.schoolScopeId ?? user.schoolScopeId,
+                            effectiveRole: updatedUser?.effectiveRole || user.effectiveRole,
+                            roleSource: updatedUser?.roleSource || user.roleSource,
+                            baseAccountFlags: updatedUser?.baseAccountFlags || user.baseAccountFlags,
+                            schoolScopeId: updatedUser?.schoolScopeId ?? user.schoolScopeId,
                             scopeWarning:
-                                payload.user?.baseAccountFlags?.is_teacher &&
-                                !(payload.user?.schoolScopeId ?? user.schoolScopeId)
+                                updatedUser?.baseAccountFlags?.is_teacher &&
+                                !(updatedUser?.schoolScopeId ?? user.schoolScopeId)
                                     ? 'Teacher accounts must have a school assignment.'
                                     : null,
                         }
@@ -360,22 +443,12 @@ const UserRolesView = ({ currentRole }) => {
         );
 
         try {
-            const response = await fetch('/api/admin/users', {
-                method: 'PATCH',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    userId,
-                    schoolNameId: schoolId,
-                    baseAccountFlags: { is_teacher: true },
-                }),
+            const updatedUser = await patchAdminUser({
+                userId,
+                schoolNameId: schoolId,
+                baseAccountFlags: { is_teacher: true },
+                fallbackErrorMessage: 'Unable to update school scope.',
             });
-            const payload = await response.json().catch(() => ({}));
-
-            if (!response.ok) {
-                throw new Error(payload?.error || 'Unable to update school scope.');
-            }
 
             setBanner({
                 type: 'success',
@@ -386,10 +459,10 @@ const UserRolesView = ({ currentRole }) => {
                     user.id === userId
                         ? {
                             ...user,
-                            effectiveRole: payload.user?.effectiveRole || user.effectiveRole,
-                            roleSource: payload.user?.roleSource || user.roleSource,
-                            baseAccountFlags: payload.user?.baseAccountFlags || user.baseAccountFlags,
-                            schoolScopeId: payload.user?.schoolScopeId ?? schoolId,
+                            effectiveRole: updatedUser?.effectiveRole || user.effectiveRole,
+                            roleSource: updatedUser?.roleSource || user.roleSource,
+                            baseAccountFlags: updatedUser?.baseAccountFlags || user.baseAccountFlags,
+                            schoolScopeId: updatedUser?.schoolScopeId ?? schoolId,
                             schoolScopeName: selectedSchool?.name || user.schoolScopeName,
                             scopeWarning: null,
                         }
@@ -427,21 +500,11 @@ const UserRolesView = ({ currentRole }) => {
         );
 
         try {
-            const response = await fetch('/api/admin/users', {
-                method: 'PATCH',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    userId,
-                    schoolNameId: null,
-                }),
+            const updatedUser = await patchAdminUser({
+                userId,
+                schoolNameId: null,
+                fallbackErrorMessage: 'Unable to clear school scope.',
             });
-            const payload = await response.json().catch(() => ({}));
-
-            if (!response.ok) {
-                throw new Error(payload?.error || 'Unable to clear school scope.');
-            }
 
             setBanner({
                 type: 'success',
@@ -452,10 +515,10 @@ const UserRolesView = ({ currentRole }) => {
                     user.id === userId
                         ? {
                             ...user,
-                            effectiveRole: payload.user?.effectiveRole || user.effectiveRole,
-                            roleSource: payload.user?.roleSource || user.roleSource,
-                            baseAccountFlags: payload.user?.baseAccountFlags || user.baseAccountFlags,
-                            schoolScopeId: payload.user?.schoolScopeId ?? null,
+                            effectiveRole: updatedUser?.effectiveRole || user.effectiveRole,
+                            roleSource: updatedUser?.roleSource || user.roleSource,
+                            baseAccountFlags: updatedUser?.baseAccountFlags || user.baseAccountFlags,
+                            schoolScopeId: updatedUser?.schoolScopeId ?? null,
                             schoolScopeName: null,
                             scopeWarning: null,
                         }
@@ -485,6 +548,201 @@ const UserRolesView = ({ currentRole }) => {
             ...confirmationConfig,
             onConfirm: () => executeClearSchoolScope(userId),
         });
+    };
+
+    const toggleUserSelection = (userId, checked) => {
+        setSelectedUserIds((currentIds) =>
+            checked
+                ? [...new Set([...currentIds, userId])]
+                : currentIds.filter((id) => id !== userId)
+        );
+    };
+
+    const toggleVisibleLinkedSelection = (checked) => {
+        setSelectedUserIds((currentIds) => {
+            const visibleIds = selectableFilteredUsers.map((user) => user.id);
+
+            if (checked) {
+                return [...new Set([...currentIds, ...visibleIds])];
+            }
+
+            return currentIds.filter((id) => !visibleIds.includes(id));
+        });
+    };
+
+    const executeBulkFlagChange = async () => {
+        if (!selectedLinkedUsers.length) {
+            setBanner({
+                type: 'error',
+                text: 'Select at least one linked user to run a bulk action.',
+            });
+            return;
+        }
+
+        if (bulkTeacherNeedsSchool && !bulkSchoolId) {
+            setBanner({
+                type: 'error',
+                text: 'Choose a school before bulk enabling Teacher access.',
+            });
+            return;
+        }
+
+        setIsBulkSaving(true);
+        setBanner({ type: '', text: '' });
+
+        let successCount = 0;
+        let firstError = null;
+
+        try {
+            for (const user of selectedLinkedUsers) {
+                try {
+                    await patchAdminUser({
+                        userId: user.id,
+                        baseAccountFlags: {
+                            [bulkFlagKey]: bulkFlagValue === 'true',
+                        },
+                        schoolNameId: bulkTeacherNeedsSchool ? bulkSchoolId : undefined,
+                        fallbackErrorMessage: 'Unable to update one or more users.',
+                    });
+                    successCount += 1;
+                } catch (updateError) {
+                    if (!firstError) {
+                        firstError = updateError;
+                    }
+                }
+            }
+
+            if (successCount > 0) {
+                await loadUsers({ silent: true });
+            }
+
+            if (successCount === selectedLinkedUsers.length) {
+                setBanner({
+                    type: 'success',
+                    text: `Updated ${successCount} user${successCount === 1 ? '' : 's'} successfully.`,
+                });
+                setSelectedUserIds([]);
+            } else if (successCount > 0) {
+                setBanner({
+                    type: 'error',
+                    text: `Updated ${successCount} user${successCount === 1 ? '' : 's'}, but ${selectedLinkedUsers.length - successCount} failed. ${firstError?.message || ''}`.trim(),
+                });
+            } else {
+                throw firstError || new Error('Unable to update the selected users.');
+            }
+        } catch (bulkError) {
+            setBanner({
+                type: 'error',
+                text: bulkError.message || 'Unable to update the selected users.',
+            });
+        } finally {
+            setIsBulkSaving(false);
+        }
+    };
+
+    const handleBulkFlagChange = async () => {
+        const confirmationConfig = buildBulkConfirmationConfig({
+            actionType: 'update_flag',
+            count: selectedLinkedUsers.length,
+            flagKey: bulkFlagKey,
+        });
+        const requiresConfirmation =
+            (bulkFlagKey === 'is_teacher' && bulkFlagValue === 'false') ||
+            (bulkFlagKey === 'is_superuser' && bulkFlagValue === 'true') ||
+            (bulkFlagKey === 'is_admin' && bulkFlagValue === 'true');
+
+        if (requiresConfirmation && confirmationConfig) {
+            setPendingConfirmation({
+                ...confirmationConfig,
+                onConfirm: executeBulkFlagChange,
+            });
+            return;
+        }
+
+        await executeBulkFlagChange();
+    };
+
+    const executeBulkClearSchoolScope = async () => {
+        const eligibleUsers = selectedLinkedUsers.filter(
+            (user) => user.schoolScopeId && !user.baseAccountFlags?.is_teacher
+        );
+
+        if (!eligibleUsers.length) {
+            setBanner({
+                type: 'error',
+                text: 'Select linked non-teacher users with a saved school assignment to clear scope in bulk.',
+            });
+            return;
+        }
+
+        setIsBulkSaving(true);
+        setBanner({ type: '', text: '' });
+
+        let successCount = 0;
+        let firstError = null;
+
+        try {
+            for (const user of eligibleUsers) {
+                try {
+                    await patchAdminUser({
+                        userId: user.id,
+                        schoolNameId: null,
+                        fallbackErrorMessage: 'Unable to clear one or more school assignments.',
+                    });
+                    successCount += 1;
+                } catch (updateError) {
+                    if (!firstError) {
+                        firstError = updateError;
+                    }
+                }
+            }
+
+            if (successCount > 0) {
+                await loadUsers({ silent: true });
+            }
+
+            if (successCount === eligibleUsers.length) {
+                setBanner({
+                    type: 'success',
+                    text: `Cleared school scope for ${successCount} user${successCount === 1 ? '' : 's'}.`,
+                });
+                setSelectedUserIds((currentIds) => currentIds.filter((id) => !eligibleUsers.some((user) => user.id === id)));
+            } else if (successCount > 0) {
+                setBanner({
+                    type: 'error',
+                    text: `Cleared ${successCount} school assignment${successCount === 1 ? '' : 's'}, but ${eligibleUsers.length - successCount} failed. ${firstError?.message || ''}`.trim(),
+                });
+            } else {
+                throw firstError || new Error('Unable to clear school assignments for the selected users.');
+            }
+        } catch (bulkError) {
+            setBanner({
+                type: 'error',
+                text: bulkError.message || 'Unable to clear school assignments for the selected users.',
+            });
+        } finally {
+            setIsBulkSaving(false);
+        }
+    };
+
+    const handleBulkClearSchoolScope = () => {
+        const eligibleUsers = selectedLinkedUsers.filter(
+            (user) => user.schoolScopeId && !user.baseAccountFlags?.is_teacher
+        );
+        const confirmationConfig = buildBulkConfirmationConfig({
+            actionType: 'clear_school_scope',
+            count: eligibleUsers.length,
+        });
+
+        if (eligibleUsers.length && confirmationConfig) {
+            setPendingConfirmation({
+                ...confirmationConfig,
+                onConfirm: executeBulkClearSchoolScope,
+            });
+            return;
+        }
+
+        executeBulkClearSchoolScope();
     };
 
     const resetFilters = () => {
@@ -663,11 +921,86 @@ const UserRolesView = ({ currentRole }) => {
                                         type="button"
                                         variant="ghost"
                                         onClick={resetFilters}
-                                        disabled={!hasActiveFilters}
+                                        disabled={!hasActiveFilters || isBulkSaving}
                                     >
                                         Reset
                                     </Button>
                                 </div>
+
+                                {selectedLinkedUsers.length > 0 ? (
+                                    <div className="rounded-lg border border-border bg-muted/30 p-4">
+                                        <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+                                            <div className="space-y-1">
+                                                <p className="text-sm font-medium text-foreground">
+                                                    {selectedLinkedUsers.length} linked user{selectedLinkedUsers.length === 1 ? '' : 's'} selected
+                                                </p>
+                                                <p className="text-xs text-muted-foreground">
+                                                    Apply a flag change to all selected linked users, or clear stale school assignments for eligible non-teacher accounts.
+                                                </p>
+                                            </div>
+                                            <div className="flex flex-col gap-3 lg:flex-row lg:items-end">
+                                                <Select value={bulkFlagKey} onValueChange={setBulkFlagKey}>
+                                                    <SelectTrigger className="min-w-[150px]" aria-label="Bulk flag">
+                                                        <SelectValue placeholder="Choose flag" />
+                                                    </SelectTrigger>
+                                                    <SelectContent>
+                                                        {baseAccountFlagColumns.map((column) => (
+                                                            <SelectItem key={column.key} value={column.key}>
+                                                                {column.label}
+                                                            </SelectItem>
+                                                        ))}
+                                                    </SelectContent>
+                                                </Select>
+                                                <Select value={bulkFlagValue} onValueChange={setBulkFlagValue}>
+                                                    <SelectTrigger className="min-w-[130px]" aria-label="Bulk flag value">
+                                                        <SelectValue placeholder="Choose action" />
+                                                    </SelectTrigger>
+                                                    <SelectContent>
+                                                        <SelectItem value="true">Enable</SelectItem>
+                                                        <SelectItem value="false">Disable</SelectItem>
+                                                    </SelectContent>
+                                                </Select>
+                                                {bulkTeacherNeedsSchool ? (
+                                                    <Select value={bulkSchoolId || undefined} onValueChange={setBulkSchoolId}>
+                                                        <SelectTrigger className="min-w-[190px]" aria-label="Bulk teacher school">
+                                                            <SelectValue placeholder="Select teacher school" />
+                                                        </SelectTrigger>
+                                                        <SelectContent>
+                                                            {schools.map((school) => (
+                                                                <SelectItem key={school.id} value={school.id}>
+                                                                    {school.name}
+                                                                </SelectItem>
+                                                            ))}
+                                                        </SelectContent>
+                                                    </Select>
+                                                ) : null}
+                                                <Button
+                                                    type="button"
+                                                    onClick={handleBulkFlagChange}
+                                                    disabled={isBulkSaving}
+                                                >
+                                                    {isBulkSaving ? 'Applying...' : 'Apply to selected'}
+                                                </Button>
+                                                <Button
+                                                    type="button"
+                                                    variant="outline"
+                                                    onClick={handleBulkClearSchoolScope}
+                                                    disabled={isBulkSaving}
+                                                >
+                                                    Clear school scope
+                                                </Button>
+                                                <Button
+                                                    type="button"
+                                                    variant="ghost"
+                                                    onClick={() => setSelectedUserIds([])}
+                                                    disabled={isBulkSaving}
+                                                >
+                                                    Clear selection
+                                                </Button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ) : null}
 
                                 {filteredUsers.length === 0 ? (
                                     <div className="flex min-h-40 flex-col items-center justify-center rounded-lg border border-dashed border-border px-6 py-10 text-center">
@@ -681,6 +1014,16 @@ const UserRolesView = ({ currentRole }) => {
                                 <Table>
                                 <TableHeader>
                                     <TableRow>
+                                        <TableHead className="w-[52px]">
+                                            <input
+                                                type="checkbox"
+                                                checked={allVisibleLinkedSelected}
+                                                onChange={(event) => toggleVisibleLinkedSelection(event.target.checked)}
+                                                disabled={!canEditRoles || isBulkSaving || selectableFilteredUsers.length === 0}
+                                                aria-label="Select all visible linked users"
+                                                className="h-4 w-4 rounded border-border align-middle"
+                                            />
+                                        </TableHead>
                                         <TableHead>User</TableHead>
                                         <TableHead>Username</TableHead>
                                         <TableHead>Email</TableHead>
@@ -701,6 +1044,16 @@ const UserRolesView = ({ currentRole }) => {
 
                                         return (
                                             <TableRow key={user.id}>
+                                                <TableCell>
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={selectedUserIds.includes(user.id)}
+                                                        onChange={(event) => toggleUserSelection(user.id, event.target.checked)}
+                                                        disabled={!canEditRoles || isBulkSaving || user.roleSource !== 'base_account'}
+                                                        aria-label={`Select ${formatName(user)}`}
+                                                        className="h-4 w-4 rounded border-border align-middle"
+                                                    />
+                                                </TableCell>
                                                 <TableCell>
                                                     <div className="space-y-1">
                                                         <div className="flex flex-wrap items-center gap-2">
@@ -745,7 +1098,7 @@ const UserRolesView = ({ currentRole }) => {
                                                                     onCheckedChange={(checked) =>
                                                                         handleBaseAccountFlagChange(user.id, column.key, checked === true)
                                                                     }
-                                                                    disabled={isSavingRow || !canEditRoles}
+                                                                    disabled={isSavingRow || isBulkSaving || !canEditRoles}
                                                                     aria-label={`${column.label} access for ${formatName(user)}`}
                                                                 />
                                                             </div>
@@ -765,6 +1118,7 @@ const UserRolesView = ({ currentRole }) => {
                                                                 onValueChange={(value) => handleSchoolScopeChange(user.id, value)}
                                                                 disabled={
                                                                     isSavingRow ||
+                                                                    isBulkSaving ||
                                                                     !canEditRoles ||
                                                                     !user.baseAccountFlags?.is_teacher
                                                                 }
@@ -799,7 +1153,7 @@ const UserRolesView = ({ currentRole }) => {
                                                                     size="sm"
                                                                     className="h-7 px-0 text-xs text-muted-foreground hover:text-foreground"
                                                                     onClick={() => handleClearSchoolScope(user.id)}
-                                                                    disabled={isSavingRow}
+                                                                    disabled={isSavingRow || isBulkSaving}
                                                                 >
                                                                     Clear school assignment
                                                                 </Button>
