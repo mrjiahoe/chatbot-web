@@ -1,6 +1,32 @@
 'use client';
 
 import React from 'react';
+import {
+    Bar,
+    BarChart as RechartsBarChart,
+    CartesianGrid,
+    Cell,
+    Line,
+    LineChart as RechartsLineChart,
+    ResponsiveContainer,
+    Scatter,
+    ScatterChart as RechartsScatterChart,
+    XAxis,
+    YAxis,
+} from 'recharts';
+
+import {
+    Card,
+    CardContent,
+    CardDescription,
+    CardHeader,
+    CardTitle,
+} from '@/components/ui/card';
+import {
+    ChartContainer,
+    ChartTooltip,
+    ChartTooltipContent,
+} from '@/components/ui/chart';
 
 const CHART_COLORS = [
     'var(--chart-1)',
@@ -272,17 +298,15 @@ export function stripVisualizationTableFromMessage(text) {
 
 function Panel({ title, subtitle, children }) {
     return (
-        <div className="mb-4 overflow-hidden rounded-2xl border border-border/80 bg-muted/20">
-            <div className="border-b border-border/70 px-4 py-3">
-                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+        <Card className="mb-4 overflow-hidden border-border/80 bg-muted/20 shadow-none">
+            <CardHeader className="gap-1 border-b border-border/70 px-4 py-3">
+                <CardTitle className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
                     {title}
-                </div>
-                {subtitle && (
-                    <div className="mt-1 text-xs text-muted-foreground">{subtitle}</div>
-                )}
-            </div>
-            <div className="p-4">{children}</div>
-        </div>
+                </CardTitle>
+                {subtitle ? <CardDescription className="text-xs">{subtitle}</CardDescription> : null}
+            </CardHeader>
+            <CardContent className="p-4">{children}</CardContent>
+        </Card>
     );
 }
 
@@ -303,128 +327,142 @@ function MetricGrid({ stats }) {
     );
 }
 
+function truncateLabel(value, limit = 22) {
+    const stringValue = String(value ?? '');
+    return stringValue.length > limit
+        ? `${stringValue.slice(0, Math.max(limit - 1, 1))}…`
+        : stringValue;
+}
+
 function BarList({ bars, metricLabel }) {
-    const maxValue = Math.max(...bars.map((bar) => bar.value), 1);
+    const chartData = bars.slice(0, 12).map((bar, index) => ({
+        ...bar,
+        fill: CHART_COLORS[index % CHART_COLORS.length],
+    }));
 
     return (
-        <div className="space-y-3">
-            {bars.slice(0, 10).map((bar, index) => (
-                <div key={`${bar.label}-${index}`} className="space-y-1.5">
-                    <div className="flex items-center justify-between gap-3 text-sm">
-                        <div className="truncate font-medium text-foreground">{bar.label}</div>
-                        <div className="shrink-0 text-muted-foreground">
-                            {formatValue(bar.value)}
-                            {metricLabel === 'share_pct' ? '%' : ''}
-                        </div>
-                    </div>
-                    <div className="h-2.5 overflow-hidden rounded-full bg-border/70">
-                        <div
-                            className="h-full rounded-full transition-[width]"
-                            style={{
-                                width: `${Math.max((bar.value / maxValue) * 100, 4)}%`,
-                                background: CHART_COLORS[index % CHART_COLORS.length],
-                            }}
-                        />
-                    </div>
-                    {bar.secondary != null && (
-                        <div className="text-xs text-muted-foreground">
-                            Raw value: {formatValue(bar.secondary)}
-                        </div>
-                    )}
-                </div>
-            ))}
-        </div>
+        <ChartContainer
+            config={{
+                value: {
+                    label: metricLabel === 'share_pct' ? 'Share %' : 'Value',
+                    color: 'var(--chart-1)',
+                },
+            }}
+            className="min-h-[280px]"
+        >
+            <ResponsiveContainer width="100%" height="100%">
+                <RechartsBarChart
+                    accessibilityLayer
+                    data={chartData}
+                    layout="vertical"
+                    margin={{ top: 4, right: 12, bottom: 4, left: 12 }}
+                >
+                    <CartesianGrid horizontal={false} />
+                    <YAxis
+                        dataKey="label"
+                        type="category"
+                        tickLine={false}
+                        axisLine={false}
+                        width={150}
+                        tickFormatter={(value) => truncateLabel(value, 24)}
+                    />
+                    <XAxis
+                        dataKey="value"
+                        type="number"
+                        tickLine={false}
+                        axisLine={false}
+                        tickFormatter={(value) =>
+                            `${formatValue(value)}${metricLabel === 'share_pct' ? '%' : ''}`
+                        }
+                    />
+                    <ChartTooltip
+                        cursor={false}
+                        content={
+                            <ChartTooltipContent
+                                valueFormatter={(value) =>
+                                    `${formatValue(value)}${metricLabel === 'share_pct' ? '%' : ''}`
+                                }
+                                footer={(item) =>
+                                    item?.payload?.secondary != null
+                                        ? `Raw value: ${formatValue(item.payload.secondary)}`
+                                        : null
+                                }
+                            />
+                        }
+                    />
+                    <Bar dataKey="value" radius={8}>
+                        {chartData.map((entry, index) => (
+                            <Cell key={`${entry.label}-${index}`} fill={entry.fill} />
+                        ))}
+                    </Bar>
+                </RechartsBarChart>
+            </ResponsiveContainer>
+        </ChartContainer>
     );
 }
 
-function buildLinePath(points, width, height, padding) {
-    const values = points.map((point) => point.value);
-    const minValue = Math.min(...values);
-    const maxValue = Math.max(...values);
-    const xStep = points.length === 1 ? 0 : (width - padding * 2) / (points.length - 1);
-
-    const coordinates = points.map((point, index) => {
-        const x = padding + xStep * index;
-        const yRange = maxValue - minValue || 1;
-        const y = height - padding - ((point.value - minValue) / yRange) * (height - padding * 2);
-        return { ...point, x, y };
-    });
-
-    const path = coordinates
-        .map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x} ${point.y}`)
-        .join(' ');
-
-    return { coordinates, path };
-}
-
 function LineChart({ points, xLabel, yLabel }) {
-    const width = 560;
-    const height = 220;
-    const padding = 28;
-    const { coordinates, path } = buildLinePath(points, width, height, padding);
-    const labelStep = Math.max(Math.ceil(points.length / 4), 1);
-
     return (
-        <div className="space-y-3">
-            <svg viewBox={`0 0 ${width} ${height}`} className="w-full overflow-visible">
-                <line
-                    x1={padding}
-                    y1={height - padding}
-                    x2={width - padding}
-                    y2={height - padding}
-                    stroke="var(--border)"
-                    strokeWidth="1"
-                />
-                <path
-                    d={path}
-                    fill="none"
-                    stroke="var(--chart-4)"
-                    strokeWidth="3"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                />
-                {coordinates.map((point, index) => (
-                    <g key={`${point.label}-${index}`}>
-                        <circle cx={point.x} cy={point.y} r="4" fill="var(--chart-2)" />
-                        {index % labelStep === 0 || index === coordinates.length - 1 ? (
-                            <text
-                                x={point.x}
-                                y={height - 8}
-                                textAnchor="middle"
-                                fontSize="11"
-                                fill="var(--muted-foreground)"
-                            >
-                                {point.label}
-                            </text>
-                        ) : null}
-                    </g>
-                ))}
-            </svg>
-            <div className="flex items-center justify-between text-xs text-muted-foreground">
-                <span>{xLabel}</span>
-                <span>{yLabel}</span>
-            </div>
-        </div>
+        <ChartContainer
+            config={{
+                value: {
+                    label: yLabel || 'Value',
+                    color: 'var(--chart-4)',
+                },
+            }}
+            className="min-h-[280px]"
+        >
+            <ResponsiveContainer width="100%" height="100%">
+                <RechartsLineChart
+                    accessibilityLayer
+                    data={points}
+                    margin={{ top: 4, right: 12, bottom: 4, left: 12 }}
+                >
+                    <CartesianGrid vertical={false} />
+                    <XAxis
+                        dataKey="label"
+                        tickLine={false}
+                        axisLine={false}
+                        interval="preserveStartEnd"
+                        minTickGap={24}
+                        tickFormatter={(value) => truncateLabel(value, 18)}
+                        label={{
+                            value: xLabel,
+                            position: 'insideBottom',
+                            offset: -4,
+                            fill: 'var(--muted-foreground)',
+                        }}
+                    />
+                    <YAxis
+                        tickLine={false}
+                        axisLine={false}
+                        tickFormatter={formatValue}
+                        label={{
+                            value: yLabel,
+                            angle: -90,
+                            position: 'insideLeft',
+                            fill: 'var(--muted-foreground)',
+                        }}
+                    />
+                    <ChartTooltip
+                        cursor={false}
+                        content={<ChartTooltipContent valueFormatter={formatValue} />}
+                    />
+                    <Line
+                        type="monotone"
+                        dataKey="value"
+                        stroke="var(--color-value)"
+                        strokeWidth={3}
+                        dot={{ fill: 'var(--chart-2)', r: 4 }}
+                        activeDot={{ r: 6 }}
+                    />
+                </RechartsLineChart>
+            </ResponsiveContainer>
+        </ChartContainer>
     );
 }
 
 function ScatterPlot({ points, xLabel, yLabel, meta }) {
-    const width = 560;
-    const height = 240;
-    const padding = 30;
-    const xValues = points.map((point) => point.x);
-    const yValues = points.map((point) => point.y);
-    const minX = Math.min(...xValues);
-    const maxX = Math.max(...xValues);
-    const minY = Math.min(...yValues);
-    const maxY = Math.max(...yValues);
-
-    const normalizedPoints = points.map((point) => ({
-        ...point,
-        xPos: padding + ((point.x - minX) / (maxX - minX || 1)) * (width - padding * 2),
-        yPos: height - padding - ((point.y - minY) / (maxY - minY || 1)) * (height - padding * 2),
-    }));
-
     return (
         <div className="space-y-3">
             {meta && (
@@ -437,60 +475,116 @@ function ScatterPlot({ points, xLabel, yLabel, meta }) {
                     }}
                 />
             )}
-            <svg viewBox={`0 0 ${width} ${height}`} className="w-full overflow-visible">
-                <rect
-                    x={padding}
-                    y={padding}
-                    width={width - padding * 2}
-                    height={height - padding * 2}
-                    fill="transparent"
-                    stroke="var(--border)"
-                    strokeWidth="1"
-                    rx="12"
-                />
-                {normalizedPoints.map((point, index) => (
-                    <circle
-                        key={`${point.x}-${point.y}-${index}`}
-                        cx={point.xPos}
-                        cy={point.yPos}
-                        r="4"
-                        fill={CHART_COLORS[index % CHART_COLORS.length]}
-                        opacity="0.8"
-                    />
-                ))}
-            </svg>
-            <div className="flex items-center justify-between text-xs text-muted-foreground">
-                <span>{xLabel}</span>
-                <span>{yLabel}</span>
-            </div>
+            <ChartContainer
+                config={{
+                    series: {
+                        label: `${xLabel} vs ${yLabel}`,
+                        color: 'var(--chart-3)',
+                    },
+                }}
+                className="min-h-[300px]"
+            >
+                <ResponsiveContainer width="100%" height="100%">
+                    <RechartsScatterChart
+                        accessibilityLayer
+                        margin={{ top: 8, right: 12, bottom: 8, left: 12 }}
+                    >
+                        <CartesianGrid />
+                        <XAxis
+                            type="number"
+                            dataKey="x"
+                            tickLine={false}
+                            axisLine={false}
+                            tickFormatter={formatValue}
+                            label={{
+                                value: xLabel,
+                                position: 'insideBottom',
+                                offset: -4,
+                                fill: 'var(--muted-foreground)',
+                            }}
+                        />
+                        <YAxis
+                            type="number"
+                            dataKey="y"
+                            tickLine={false}
+                            axisLine={false}
+                            tickFormatter={formatValue}
+                            label={{
+                                value: yLabel,
+                                angle: -90,
+                                position: 'insideLeft',
+                                fill: 'var(--muted-foreground)',
+                            }}
+                        />
+                        <ChartTooltip
+                            cursor={{ strokeDasharray: '4 4' }}
+                            content={
+                                <ChartTooltipContent
+                                    hideLabel
+                                    valueFormatter={(value, _, item) =>
+                                        item.dataKey === 'x'
+                                            ? `${xLabel}: ${formatValue(value)}`
+                                            : `${yLabel}: ${formatValue(value)}`
+                                    }
+                                />
+                            }
+                        />
+                        <Scatter data={points} fill="var(--color-series)" />
+                    </RechartsScatterChart>
+                </ResponsiveContainer>
+            </ChartContainer>
         </div>
     );
 }
 
 function Histogram({ bins, stats }) {
-    const maxValue = Math.max(...bins.map((bin) => bin.count), 1);
-
     return (
         <div className="space-y-4">
             {stats && <MetricGrid stats={stats} />}
-            <div className="flex items-end gap-2 overflow-x-auto pb-1">
-                {bins.map((bin, index) => (
-                    <div key={`${bin.label}-${index}`} className="min-w-14 flex-1">
-                        <div className="flex h-40 items-end rounded-xl border border-border/70 bg-card px-2 pb-2">
-                            <div
-                                className="w-full rounded-md"
-                                style={{
-                                    height: `${Math.max((bin.count / maxValue) * 100, 6)}%`,
-                                    background: CHART_COLORS[index % CHART_COLORS.length],
-                                }}
-                            />
-                        </div>
-                        <div className="mt-2 text-center text-[11px] text-muted-foreground">
-                            {bin.count}
-                        </div>
-                    </div>
-                ))}
-            </div>
+            <ChartContainer
+                config={{
+                    count: {
+                        label: 'Count',
+                        color: 'var(--chart-5)',
+                    },
+                }}
+                className="min-h-[280px]"
+            >
+                <ResponsiveContainer width="100%" height="100%">
+                    <RechartsBarChart
+                        accessibilityLayer
+                        data={bins}
+                        margin={{ top: 4, right: 12, bottom: 4, left: 12 }}
+                    >
+                        <CartesianGrid vertical={false} />
+                        <XAxis
+                            dataKey="label"
+                            tickLine={false}
+                            axisLine={false}
+                            interval="preserveStartEnd"
+                            minTickGap={18}
+                            tickFormatter={(value) => truncateLabel(value, 12)}
+                        />
+                        <YAxis
+                            tickLine={false}
+                            axisLine={false}
+                            allowDecimals={false}
+                        />
+                        <ChartTooltip
+                            cursor={false}
+                            content={<ChartTooltipContent valueFormatter={formatValue} />}
+                        />
+                        <Bar dataKey="count" radius={[8, 8, 0, 0]}>
+                            {bins.map((bin, index) => (
+                                <Cell
+                                    key={`${bin.label}-${index}`}
+                                    fill={CHART_COLORS[index % CHART_COLORS.length]}
+                                />
+                            ))}
+                        </Bar>
+                    </RechartsBarChart>
+                </ResponsiveContainer>
+            </ChartContainer>
         </div>
     );
 }
