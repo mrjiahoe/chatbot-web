@@ -76,7 +76,9 @@ async function fetchSchoolMap(admin) {
         .select('id, name');
 
     if (error) {
-        return new Map();
+        throw new Error(
+            `Unable to load schools from base_school: ${error.message || 'unknown error'}`
+        );
     }
 
     return new Map((data || []).map((school) => [school.id, school.name]));
