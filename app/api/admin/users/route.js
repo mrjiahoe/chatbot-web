@@ -1,11 +1,18 @@
 import { NextResponse } from 'next/server';
+import {
+    BASE_ACCOUNT_FLAG_FIELDS,
+    buildAccessProfile,
+    fetchBaseAccountsByAuthUserIds,
+    fetchCurrentAccessProfile,
+    normalizeBaseAccountFlags,
+} from '@/lib/access';
 import { getSupabaseAdminClient } from '@/lib/supabase-admin';
 import { getServerSupabaseClient } from '@/lib/serverSupabase';
-import { canManageRoles, ROLE_OPTIONS } from '@/lib/roles';
+import { canAccessRoleDashboard, canManageUserRoles, getAssignableRoleOptions, getRoleOptions, normalizeRole } from '@/lib/roles';
 
-const ALLOWED_ROLES = new Set(ROLE_OPTIONS.map((option) => option.value));
+const ALLOWED_ROLES = new Set(getRoleOptions().map((option) => option.value));
 
-async function requireRoleManager() {
+async function requireRoleAccess() {
     const supabase = await getServerSupabaseClient();
     const {
         data: { user },
@@ -18,13 +25,13 @@ async function requireRoleManager() {
         };
     }
 
-    const { data: profile, error: profileError } = await supabase
-        .from('profiles')
-        .select('id, role')
-        .eq('id', user.id)
-        .single();
+    const accessProfile = await fetchCurrentAccessProfile({
+        supabase,
+        authUser: user,
+    });
+    const actorRole = normalizeRole(accessProfile.effectiveRole);
 
-    if (profileError || !canManageRoles(profile?.role)) {
+    if (!canAccessRoleDashboard(actorRole)) {
         return {
             error: NextResponse.json({ error: 'Forbidden.' }, { status: 403 }),
         };
@@ -33,6 +40,7 @@ async function requireRoleManager() {
     return {
         admin: getSupabaseAdminClient(),
         currentUserId: user.id,
+        actorRole,
     };
 }
 
@@ -66,19 +74,24 @@ async function listAllUsers(admin) {
 
 export async function GET() {
     try {
-        const access = await requireRoleManager();
+        const access = await requireRoleAccess();
 
         if (access.error) {
             return access.error;
         }
 
-        const { admin, currentUserId } = access;
+        const { admin, currentUserId, actorRole } = access;
         const [users, profilesResponse] = await Promise.all([
             listAllUsers(admin),
             admin
                 .from('profiles')
                 .select('id, username, nickname, first_name, last_name, role, onboarding_completed'),
         ]);
+        const authUserIds = users.map((authUser) => authUser.id);
+        const baseAccountsByAuthUserId = await fetchBaseAccountsByAuthUserIds({
+            supabase: admin,
+            authUserIds,
+        });
 
         if (profilesResponse.error) {
             throw profilesResponse.error;
@@ -89,17 +102,26 @@ export async function GET() {
         );
 
         const mergedUsers = users.map((user) => {
-            const profile = profilesById.get(user.id);
+            const profile = profilesById.get(user.id) || null;
+            const accessProfile = buildAccessProfile({
+                authUser: user,
+                profile,
+                baseAccount: baseAccountsByAuthUserId.get(user.id) || null,
+            });
 
             return {
                 id: user.id,
-                email: user.email || '',
-                username: profile?.username || '',
+                email: accessProfile.email,
+                username: accessProfile.username,
                 nickname: profile?.nickname || '',
                 firstName: profile?.first_name || '',
                 lastName: profile?.last_name || '',
-                role: profile?.role || 'user',
-                onboardingCompleted: Boolean(profile?.onboarding_completed),
+                role: accessProfile.role,
+                effectiveRole: accessProfile.effectiveRole,
+                roleSource: accessProfile.roleSource,
+                baseAccountId: accessProfile.baseAccountId,
+                baseAccountFlags: accessProfile.baseAccount,
+                onboardingCompleted: Boolean(accessProfile.onboarding_completed),
                 createdAt: user.created_at,
                 lastSignInAt: user.last_sign_in_at,
                 isCurrentUser: user.id === currentUserId,
@@ -108,6 +130,7 @@ export async function GET() {
 
         return NextResponse.json({
             users: mergedUsers,
+            assignableRoles: getAssignableRoleOptions(actorRole),
         });
     } catch (error) {
         return NextResponse.json(
@@ -121,25 +144,103 @@ export async function GET() {
 
 export async function PATCH(request) {
     try {
-        const access = await requireRoleManager();
+        const access = await requireRoleAccess();
 
         if (access.error) {
             return access.error;
         }
 
-        const { admin } = access;
+        const { admin, actorRole } = access;
+        if (!canManageUserRoles(actorRole)) {
+            return NextResponse.json({ error: 'Forbidden.' }, { status: 403 });
+        }
         const body = await request.json();
         const userId = body?.userId;
-        const role = body?.role;
+        const requestedRole = body?.role;
+        const requestedBaseAccountFlags = body?.baseAccountFlags;
+        const role = normalizeRole(requestedRole);
+        const assignableRoles = new Set(
+            getAssignableRoleOptions(actorRole).map((option) => option.value)
+        );
 
-        if (!userId || !role) {
+        if (!userId) {
             return NextResponse.json(
-                { error: 'User ID and role are required.' },
+                { error: 'User ID is required.' },
                 { status: 400 }
             );
         }
 
-        if (!ALLOWED_ROLES.has(role)) {
+        const baseAccountsByAuthUserId = await fetchBaseAccountsByAuthUserIds({
+            supabase: admin,
+            authUserIds: [userId],
+        });
+        const baseAccount = baseAccountsByAuthUserId.get(userId) || null;
+
+        if (requestedBaseAccountFlags && typeof requestedBaseAccountFlags === 'object') {
+            if (!baseAccount) {
+                return NextResponse.json(
+                    { error: 'This user is not linked to base_account.' },
+                    { status: 400 }
+                );
+            }
+
+            const flagKeys = Object.keys(requestedBaseAccountFlags);
+
+            if (!flagKeys.length) {
+                return NextResponse.json(
+                    { error: 'At least one base_account flag is required.' },
+                    { status: 400 }
+                );
+            }
+
+            const hasInvalidFlag = flagKeys.some((key) => !BASE_ACCOUNT_FLAG_FIELDS.includes(key));
+
+            if (hasInvalidFlag) {
+                return NextResponse.json(
+                    { error: 'Invalid base_account flag selected.' },
+                    { status: 400 }
+                );
+            }
+
+            const normalizedFlags = normalizeBaseAccountFlags(requestedBaseAccountFlags);
+
+            const { data: updatedBaseAccount, error } = await admin
+                .from('base_account')
+                .update(normalizedFlags)
+                .eq('auth_user_id', userId)
+                .select()
+                .single();
+
+            if (error) {
+                throw error;
+            }
+
+            const effectiveRole = buildAccessProfile({
+                authUser: { id: userId },
+                baseAccount: updatedBaseAccount,
+            }).effectiveRole;
+
+            return NextResponse.json({
+                user: {
+                    id: userId,
+                    effectiveRole,
+                    roleSource: 'base_account',
+                    baseAccountFlags: {
+                        ...normalizeBaseAccountFlags(baseAccount),
+                        ...normalizedFlags,
+                    },
+                },
+            });
+        }
+
+        if (!requestedRole) {
+            return NextResponse.json(
+                { error: 'Role is required for profile-managed users.' },
+                { status: 400 }
+            );
+        }
+
+        if (!ALLOWED_ROLES.has(requestedRole) || !assignableRoles.has(requestedRole)) {
             return NextResponse.json(
                 { error: 'Invalid role selected.' },
                 { status: 400 }
@@ -167,6 +268,8 @@ export async function PATCH(request) {
             user: {
                 id: userId,
                 role,
+                effectiveRole: role,
+                roleSource: 'profiles',
             },
         });
     } catch (error) {

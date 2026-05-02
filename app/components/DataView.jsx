@@ -1,25 +1,32 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { Columns3, Database, Eye, Loader2, Rows3, Server } from 'lucide-react';
+import { AlertTriangle, Database, Eye, Loader2, Rows3, Server } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import FilePreviewModal from './FilePreviewModal';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
+import { canAccessDataSources, canPreviewDataSources } from '@/lib/roles';
 
-const DataView = () => {
+const DataView = ({ currentRole }) => {
     const [tables, setTables] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
     const [isPreviewLoading, setIsPreviewLoading] = useState(false);
     const [previewData, setPreviewData] = useState(null);
     const [selectedTableName, setSelectedTableName] = useState('');
     const [error, setError] = useState(null);
+    const canViewDataSources = canAccessDataSources(currentRole);
+    const canPreviewData = canPreviewDataSources(currentRole);
 
     useEffect(() => {
+        if (!canViewDataSources) {
+            setIsLoading(false);
+            return;
+        }
+
         fetchTables();
-    }, []);
+    }, [canViewDataSources]);
 
     const fetchTables = async () => {
         try {
@@ -57,6 +64,11 @@ const DataView = () => {
     };
 
     const handlePreviewTable = async (table) => {
+        if (!canPreviewData) {
+            setError('You do not have permission to preview data sources.');
+            return;
+        }
+
         setIsPreviewLoading(true);
         setSelectedTableName(table.name);
 
@@ -79,6 +91,26 @@ const DataView = () => {
             setIsPreviewLoading(false);
         }
     };
+
+    if (!canViewDataSources) {
+        return (
+            <div className="flex-1 overflow-y-auto bg-muted/30 p-6 md:p-10 animate-fade-in custom-scrollbar">
+                <div className="mx-auto max-w-5xl">
+                    <Card className="border-amber-200 bg-amber-50/80 dark:border-amber-900/30 dark:bg-amber-950/20">
+                        <CardHeader>
+                            <CardTitle className="flex items-center gap-2 text-amber-900 dark:text-amber-100">
+                                <AlertTriangle className="size-5" />
+                                Access restricted
+                            </CardTitle>
+                            <CardDescription className="text-amber-800/80 dark:text-amber-200/80">
+                                Your current role does not have access to data sources.
+                            </CardDescription>
+                        </CardHeader>
+                    </Card>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="flex-1 overflow-y-auto bg-muted/30 p-6 md:p-10 animate-fade-in custom-scrollbar">
@@ -187,13 +219,14 @@ const DataView = () => {
                                             variant="outline"
                                             size="sm"
                                             className="shrink-0 gap-2 cursor-pointer"
+                                            disabled={!canPreviewData}
                                             onClick={(event) => {
                                                 event.stopPropagation();
                                                 handlePreviewTable(table);
                                             }}
                                         >
                                             <Eye className="size-4" />
-                                            Preview
+                                            {canPreviewData ? 'Preview' : 'No Access'}
                                         </Button>
                                     </div>
                                 ))}

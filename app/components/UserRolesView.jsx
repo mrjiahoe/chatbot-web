@@ -6,8 +6,9 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Switch } from '@/components/ui/switch';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { canManageRoles, ROLE_OPTIONS } from '@/lib/roles';
+import { canAccessRoleDashboard, canManageUserRoles, formatRoleLabel, getAssignableRoleOptions } from '@/lib/roles';
 
 function formatDate(value) {
     if (!value) {
@@ -31,14 +32,28 @@ function formatName(user) {
     return user.nickname || user.username || user.email || 'Unknown user';
 }
 
+const baseAccountFlagColumns = [
+    { key: 'is_active', label: 'Active' },
+    { key: 'is_superuser', label: 'Super' },
+    { key: 'is_admin', label: 'Admin' },
+    { key: 'is_management', label: 'Mgmt' },
+    { key: 'is_principal', label: 'Principal' },
+    { key: 'is_cluster_head', label: 'Cluster' },
+    { key: 'is_ra', label: 'Analyst' },
+    { key: 'is_teacher', label: 'Teacher' },
+    { key: 'is_staff', label: 'Staff' },
+];
+
 const UserRolesView = ({ currentRole }) => {
     const [users, setUsers] = useState([]);
+    const [assignableRoles, setAssignableRoles] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
     const [isRefreshing, setIsRefreshing] = useState(false);
     const [savingUserId, setSavingUserId] = useState(null);
     const [error, setError] = useState(null);
     const [banner, setBanner] = useState({ type: '', text: '' });
-    const hasAccess = canManageRoles(currentRole);
+    const hasAccess = canAccessRoleDashboard(currentRole);
+    const canEditRoles = canManageUserRoles(currentRole);
 
     const sortedUsers = useMemo(
         () => [...users].sort((left, right) => {
@@ -74,6 +89,7 @@ const UserRolesView = ({ currentRole }) => {
             }
 
             setUsers(payload.users || []);
+            setAssignableRoles(payload.assignableRoles || getAssignableRoleOptions(currentRole));
         } catch (loadError) {
             setError(loadError.message || 'Unable to load users.');
         } finally {
@@ -85,6 +101,70 @@ const UserRolesView = ({ currentRole }) => {
     useEffect(() => {
         loadUsers();
     }, [hasAccess]);
+
+    const handleBaseAccountFlagChange = async (userId, flagKey, checked) => {
+        const previousUsers = users;
+        setSavingUserId(userId);
+        setBanner({ type: '', text: '' });
+        setUsers((currentUsers) =>
+            currentUsers.map((user) =>
+                user.id === userId
+                    ? {
+                        ...user,
+                        baseAccountFlags: {
+                            ...user.baseAccountFlags,
+                            [flagKey]: checked,
+                        },
+                    }
+                    : user
+            )
+        );
+
+        try {
+            const response = await fetch('/api/admin/users', {
+                method: 'PATCH',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    userId,
+                    baseAccountFlags: {
+                        [flagKey]: checked,
+                    },
+                }),
+            });
+            const payload = await response.json().catch(() => ({}));
+
+            if (!response.ok) {
+                throw new Error(payload?.error || 'Unable to update access flags.');
+            }
+
+            setBanner({
+                type: 'success',
+                text: 'Access flags updated successfully.',
+            });
+            setUsers((currentUsers) =>
+                currentUsers.map((user) =>
+                    user.id === userId
+                        ? {
+                            ...user,
+                            effectiveRole: payload.user?.effectiveRole || user.effectiveRole,
+                            roleSource: payload.user?.roleSource || user.roleSource,
+                            baseAccountFlags: payload.user?.baseAccountFlags || user.baseAccountFlags,
+                        }
+                        : user
+                )
+            );
+        } catch (updateError) {
+            setUsers(previousUsers);
+            setBanner({
+                type: 'error',
+                text: updateError.message || 'Unable to update access flags.',
+            });
+        } finally {
+            setSavingUserId(null);
+        }
+    };
 
     const handleRoleChange = async (userId, nextRole) => {
         const previousUsers = users;
@@ -128,6 +208,8 @@ const UserRolesView = ({ currentRole }) => {
                         ? {
                             ...user,
                             role: payload.user?.role || nextRole,
+                            effectiveRole: payload.user?.effectiveRole || nextRole,
+                            roleSource: payload.user?.roleSource || 'profiles',
                         }
                         : user
                 )
@@ -154,7 +236,7 @@ const UserRolesView = ({ currentRole }) => {
                                 Access restricted
                             </CardTitle>
                             <CardDescription className="text-amber-800/80 dark:text-amber-200/80">
-                                Only super admins or owners can manage user roles from this page.
+                                Your current role does not have access to this dashboard.
                             </CardDescription>
                         </CardHeader>
                     </Card>
@@ -169,13 +251,13 @@ const UserRolesView = ({ currentRole }) => {
                 <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
                     <div className="space-y-2">
                         <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-                            Super admin
+                            Access control
                         </p>
                         <h1 className="text-3xl font-semibold tracking-tight text-foreground">
                             User Role Management
                         </h1>
                         <p className="max-w-3xl text-sm text-muted-foreground">
-                            Review user details and assign roles from one place. Changes save as soon as you pick a new role.
+                            Review users from Supabase Auth, edit `base_account` access flags, and keep a simple fallback role for users who are not linked yet.
                         </p>
                     </div>
 
@@ -203,6 +285,12 @@ const UserRolesView = ({ currentRole }) => {
                     </div>
                 )}
 
+                {!canEditRoles ? (
+                    <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-900/30 dark:bg-amber-950/20 dark:text-amber-200">
+                        Your current effective role is <span className="font-semibold">{formatRoleLabel(currentRole)}</span>. This role can view the dashboard but cannot edit access flags. To tick these switches, your own linked account must resolve to <span className="font-semibold">Super Admin</span> or <span className="font-semibold">Owner</span>.
+                    </div>
+                ) : null}
+
                 <Card>
                     <CardHeader className="border-b border-border bg-muted/20">
                         <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
@@ -212,7 +300,7 @@ const UserRolesView = ({ currentRole }) => {
                                     Team access
                                 </CardTitle>
                                 <CardDescription className="pt-1">
-                                    Users are listed from Supabase Auth and matched with their profile records.
+                                    Base-account users are managed with boolean access flags. Profile-only users still use the legacy role dropdown.
                                 </CardDescription>
                             </div>
                             <div className="inline-flex items-center gap-2 rounded-full border border-border bg-background px-3 py-1 text-xs font-medium text-muted-foreground">
@@ -244,15 +332,22 @@ const UserRolesView = ({ currentRole }) => {
                                 <p className="text-sm font-medium text-muted-foreground">No users found yet.</p>
                             </div>
                         ) : (
-                            <Table>
+                            <div className="overflow-x-auto">
+                                <Table>
                                 <TableHeader>
                                     <TableRow>
                                         <TableHead>User</TableHead>
                                         <TableHead>Username</TableHead>
                                         <TableHead>Email</TableHead>
                                         <TableHead>Status</TableHead>
+                                        <TableHead>Source</TableHead>
                                         <TableHead>Joined</TableHead>
-                                        <TableHead className="w-[180px]">Role</TableHead>
+                                        {baseAccountFlagColumns.map((column) => (
+                                            <TableHead key={column.key} className="text-center">
+                                                {column.label}
+                                            </TableHead>
+                                        ))}
+                                        <TableHead className="w-[220px]">Effective Role</TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
@@ -294,36 +389,77 @@ const UserRolesView = ({ currentRole }) => {
                                                     </span>
                                                 </TableCell>
                                                 <TableCell className="text-sm text-muted-foreground">
+                                                    {user.roleSource === 'base_account' ? 'base_account' : 'profiles'}
+                                                </TableCell>
+                                                <TableCell className="text-sm text-muted-foreground">
                                                     {formatDate(user.createdAt)}
                                                 </TableCell>
+                                                {baseAccountFlagColumns.map((column) => (
+                                                    <TableCell key={column.key} className="text-center">
+                                                        {user.roleSource === 'base_account' ? (
+                                                            <div className="flex justify-center">
+                                                                <Switch
+                                                                    checked={Boolean(user.baseAccountFlags?.[column.key])}
+                                                                    onCheckedChange={(checked) =>
+                                                                        handleBaseAccountFlagChange(user.id, column.key, checked === true)
+                                                                    }
+                                                                    disabled={isSavingRow || !canEditRoles}
+                                                                    aria-label={`${column.label} access for ${formatName(user)}`}
+                                                                />
+                                                            </div>
+                                                        ) : (
+                                                            <span className="text-xs text-muted-foreground">-</span>
+                                                        )}
+                                                    </TableCell>
+                                                ))}
                                                 <TableCell>
                                                     <div className="space-y-1">
-                                                        <Select
-                                                            value={user.role || 'user'}
-                                                            onValueChange={(value) => handleRoleChange(user.id, value)}
-                                                            disabled={isSavingRow}
-                                                        >
-                                                            <SelectTrigger className="w-full bg-background">
-                                                                <SelectValue placeholder="Select role" />
-                                                            </SelectTrigger>
-                                                            <SelectContent align="end">
-                                                                {ROLE_OPTIONS.map((roleOption) => (
-                                                                    <SelectItem key={roleOption.value} value={roleOption.value}>
-                                                                        {roleOption.label}
-                                                                    </SelectItem>
-                                                                ))}
-                                                            </SelectContent>
-                                                        </Select>
-                                                        {isSavingRow ? (
-                                                            <p className="text-xs text-muted-foreground">Saving role change...</p>
-                                                        ) : null}
+                                                        <div className="inline-flex items-center rounded-full border border-border bg-muted px-2.5 py-1 text-xs font-medium text-foreground">
+                                                            {formatRoleLabel(user.effectiveRole)}
+                                                        </div>
+                                                        {user.roleSource === 'base_account' ? (
+                                                            <p className="text-xs text-muted-foreground">
+                                                                Derived from `base_account` flags.
+                                                            </p>
+                                                        ) : (
+                                                            <div className="space-y-1">
+                                                                <Select
+                                                                    value={user.role || 'user'}
+                                                                    onValueChange={(value) => handleRoleChange(user.id, value)}
+                                                                    disabled={isSavingRow || !canEditRoles}
+                                                                >
+                                                                    <SelectTrigger className="w-full bg-background">
+                                                                        <SelectValue placeholder="Select role" />
+                                                                    </SelectTrigger>
+                                                                    <SelectContent align="end">
+                                                                        {assignableRoles.map((roleOption) => (
+                                                                            <SelectItem key={roleOption.value} value={roleOption.value}>
+                                                                                {roleOption.label}
+                                                                            </SelectItem>
+                                                                        ))}
+                                                                    </SelectContent>
+                                                                </Select>
+                                                                {isSavingRow ? (
+                                                                    <p className="text-xs text-muted-foreground">Saving access change...</p>
+                                                                ) : !canEditRoles ? (
+                                                                    <p className="text-xs text-muted-foreground">
+                                                                        {formatRoleLabel(currentRole)} cannot edit roles.
+                                                                    </p>
+                                                                ) : (
+                                                                    <p className="text-xs text-muted-foreground">
+                                                                        Fallback role for users without `base_account`.
+                                                                    </p>
+                                                                )}
+                                                            </div>
+                                                        )}
                                                     </div>
                                                 </TableCell>
                                             </TableRow>
                                         );
                                     })}
                                 </TableBody>
-                            </Table>
+                                </Table>
+                            </div>
                         )}
                     </CardContent>
                 </Card>

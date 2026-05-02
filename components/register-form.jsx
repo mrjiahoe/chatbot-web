@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
@@ -26,6 +26,7 @@ import {
 } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import { signUp, signInWithGoogle } from '../lib/auth';
+import { supabase } from '../lib/supabase';
 
 export function RegisterForm() {
     const [email, setEmail] = useState('');
@@ -36,11 +37,66 @@ export function RegisterForm() {
     const [confirmPassword, setConfirmPassword] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const [isSuccess, setIsSuccess] = useState(false);
+    const [isCheckingUsername, setIsCheckingUsername] = useState(false);
+    const [usernameStatus, setUsernameStatus] = useState(null);
     const [error, setError] = useState(null);
     const router = useRouter();
 
+    useEffect(() => {
+        if (!username || username.length < 3) {
+            setUsernameStatus(null);
+            return;
+        }
+
+        const timer = setTimeout(async () => {
+            setIsCheckingUsername(true);
+            const normalizedUsername = username.trim().toLowerCase();
+
+            const { data: baseAccountUser, error: baseAccountError } = await supabase
+                .from('base_account')
+                .select('username')
+                .eq('username', normalizedUsername)
+                .maybeSingle();
+
+            if (baseAccountError && baseAccountError.code !== 'PGRST116') {
+                console.error(baseAccountError);
+                setIsCheckingUsername(false);
+                return;
+            }
+
+            if (baseAccountUser) {
+                setUsernameStatus('taken');
+                setIsCheckingUsername(false);
+                return;
+            }
+
+            const { data: profileUser, error: profileError } = await supabase
+                .from('profiles')
+                .select('username')
+                .eq('username', normalizedUsername)
+                .maybeSingle();
+
+            if (profileError) {
+                console.error(profileError);
+            } else if (profileUser) {
+                setUsernameStatus('taken');
+            } else {
+                setUsernameStatus('available');
+            }
+
+            setIsCheckingUsername(false);
+        }, 400);
+
+        return () => clearTimeout(timer);
+    }, [username]);
+
     const handleRegister = async (event) => {
         event.preventDefault();
+
+        if (usernameStatus !== 'available') {
+            setError('Choose an available username before creating your account.');
+            return;
+        }
 
         if (password !== confirmPassword) {
             setError("Passwords don't match");
@@ -51,12 +107,13 @@ export function RegisterForm() {
         setError(null);
 
         const normalizedEmail = email.trim().toLowerCase();
+        const normalizedUsername = username.trim().toLowerCase();
 
         const { data, error: signUpError } = await signUp({
             email: normalizedEmail,
             password,
             metadata: {
-                username: username.trim(),
+                username: normalizedUsername,
                 first_name: firstName.trim(),
                 last_name: lastName.trim(),
             },
@@ -169,9 +226,18 @@ export function RegisterForm() {
                                         type="text"
                                         placeholder="johndoe"
                                         value={username}
-                                        onChange={(e) => setUsername(e.target.value)}
+                                        onChange={(e) => setUsername(e.target.value.replace(/[^a-zA-Z0-9_]/g, ''))}
                                         required
                                     />
+                                    <FieldDescription>
+                                        {isCheckingUsername
+                                            ? 'Checking username availability...'
+                                            : usernameStatus === 'taken'
+                                                ? 'That username is already taken.'
+                                                : usernameStatus === 'available'
+                                                    ? 'Username is available.'
+                                                    : 'Use at least 3 letters, numbers, or underscores.'}
+                                    </FieldDescription>
                                 </Field>
 
                                 <Field className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -244,7 +310,7 @@ export function RegisterForm() {
                                 </Field>
 
                                 <Field>
-                                    <Button type="submit" className="w-full gap-2" disabled={isLoading}>
+                                    <Button type="submit" className="w-full gap-2" disabled={isLoading || usernameStatus !== 'available'}>
                                         {isLoading ? (
                                             <Loader2 className="size-4 animate-spin" />
                                         ) : (

@@ -17,12 +17,16 @@ import {
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Sidebar as SidebarRoot, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarRail, SidebarSeparator } from '@/components/ui/sidebar';
-import { canManageRoles } from '@/lib/roles';
+import { canAccessChat, canAccessDataSources, canAccessRoleDashboard, canViewChatHistory } from '@/lib/roles';
 
 const Sidebar = ({ activeTab, setActiveTab, onNewChat, onSelectChat, recentChats, activeChatId, onLogout, user, profile }) => {
     const displayName = profile?.nickname || user?.email?.split('@')[0] || 'User Profile';
     const secondaryLabel = profile?.username ? `@${profile.username}` : user?.email || 'Free Plan';
-    const hasRoleManagementAccess = canManageRoles(profile?.role);
+    const currentRole = profile?.effectiveRole || profile?.role;
+    const canUseChat = canAccessChat(currentRole);
+    const canUseDataSources = canAccessDataSources(currentRole);
+    const canUseHistory = canViewChatHistory(currentRole);
+    const hasRoleManagementAccess = canAccessRoleDashboard(currentRole);
     const initials = displayName
         .split(' ')
         .map(part => part[0])
@@ -32,9 +36,9 @@ const Sidebar = ({ activeTab, setActiveTab, onNewChat, onSelectChat, recentChats
         .toUpperCase() || 'U';
 
     const mainMenuItems = [
-        { icon: MessageSquare, label: 'Chat', id: 'Chat' },
-        { icon: Database, label: 'Data Sources', id: 'DataCenter' },
-        { icon: Clock, label: 'History', id: 'HistoryList' },
+        ...(canUseChat ? [{ icon: MessageSquare, label: 'Chat', id: 'Chat' }] : []),
+        ...(canUseDataSources ? [{ icon: Database, label: 'Data Sources', id: 'DataCenter' }] : []),
+        ...(canUseHistory ? [{ icon: Clock, label: 'History', id: 'HistoryList' }] : []),
         ...(hasRoleManagementAccess ? [{ icon: ShieldCheck, label: 'User Roles', id: 'UserRoles' }] : []),
     ];
 
@@ -57,6 +61,7 @@ const Sidebar = ({ activeTab, setActiveTab, onNewChat, onSelectChat, recentChats
                             onClick={onNewChat}
                             tooltip="New chat"
                             className="text-sm bg-sidebar-primary text-sidebar-primary-foreground hover:bg-sidebar-primary/90 hover:text-sidebar-primary-foreground"
+                            disabled={!canUseChat}
                         >
                             <Plus />
                             <span>New Chat</span>
@@ -92,31 +97,33 @@ const Sidebar = ({ activeTab, setActiveTab, onNewChat, onSelectChat, recentChats
 
                 <SidebarSeparator />
 
-                <SidebarGroup className="min-h-0">
-                    <SidebarGroupLabel>Recent Chats</SidebarGroupLabel>
-                    <SidebarGroupContent className="min-h-0">
-                        <SidebarMenu className="gap-1">
-                            {recentChats?.length ? (
-                                recentChats.map((chat) => (
-                                    <SidebarMenuItem key={chat.id}>
-                                        <SidebarMenuButton
-                                            onClick={() => onSelectChat(chat.id)}
-                                            isActive={activeChatId === chat.id}
-                                            tooltip={chat.title}
-                                        >
-                                            <FileText />
-                                            <span>{chat.title}</span>
-                                        </SidebarMenuButton>
-                                    </SidebarMenuItem>
-                                ))
-                            ) : (
-                                <div className="px-2 py-3 text-sm text-sidebar-foreground/60">
-                                    No chats yet
-                                </div>
-                            )}
-                        </SidebarMenu>
-                    </SidebarGroupContent>
-                </SidebarGroup>
+                {canUseHistory ? (
+                    <SidebarGroup className="min-h-0">
+                        <SidebarGroupLabel>Recent Chats</SidebarGroupLabel>
+                        <SidebarGroupContent className="min-h-0">
+                            <SidebarMenu className="gap-1">
+                                {recentChats?.length ? (
+                                    recentChats.map((chat) => (
+                                        <SidebarMenuItem key={chat.id}>
+                                            <SidebarMenuButton
+                                                onClick={() => onSelectChat(chat.id)}
+                                                isActive={activeChatId === chat.id}
+                                                tooltip={chat.title}
+                                            >
+                                                <FileText />
+                                                <span>{chat.title}</span>
+                                            </SidebarMenuButton>
+                                        </SidebarMenuItem>
+                                    ))
+                                ) : (
+                                    <div className="px-2 py-3 text-sm text-sidebar-foreground/60">
+                                        No chats yet
+                                    </div>
+                                )}
+                            </SidebarMenu>
+                        </SidebarGroupContent>
+                    </SidebarGroup>
+                ) : null}
             </SidebarContent>
 
             <SidebarFooter className="border-t border-sidebar-border p-3">

@@ -7,6 +7,21 @@ function isEmailLike(value) {
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 }
 
+function isBaseAccountUnavailable(error) {
+    const code = error?.code;
+    const message = error?.message || '';
+
+    return (
+        code === '42P01' ||
+        code === 'PGRST205' ||
+        code === 'PGRST116' ||
+        code === '42703' ||
+        message.includes('base_account') ||
+        message.includes('relation') ||
+        message.includes('schema cache')
+    );
+}
+
 async function resolveEmailFromIdentifier(identifier) {
     const normalizedIdentifier = identifier.trim().toLowerCase();
 
@@ -15,6 +30,20 @@ async function resolveEmailFromIdentifier(identifier) {
     }
 
     const admin = getSupabaseAdminClient();
+    const { data: account, error: accountError } = await admin
+        .from('base_account')
+        .select('email')
+        .eq('username', normalizedIdentifier)
+        .maybeSingle();
+
+    if (!accountError && account?.email) {
+        return account.email.toLowerCase();
+    }
+
+    if (accountError && !isBaseAccountUnavailable(accountError)) {
+        throw new Error('Unable to look up that username right now.');
+    }
+
     const { data: profile, error: profileError } = await admin
         .from('profiles')
         .select('id')

@@ -1,8 +1,10 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
+import { fetchCurrentAccessProfile } from '../../../lib/access.js';
 import { handleStructuredChat } from '../../../lib/controller.js';
 import { generateTitle } from '../../../lib/aiService.js';
 import { getServerSupabaseClient } from '../../../lib/serverSupabase.js';
+import { canAccessChat, canUseChatDataContext } from '../../../lib/roles.js';
 import {
     CHAT_DATA_CONTEXT_TOO_LONG,
     CHAT_HISTORY_COUNT_TOO_HIGH,
@@ -157,6 +159,20 @@ export async function POST(req) {
             throw httpError(401, 'Authentication required');
         }
 
+        const accessProfile = await fetchCurrentAccessProfile({
+            supabase,
+            authUser: user,
+        });
+        const currentRole = accessProfile.effectiveRole;
+
+        if (!canAccessChat(currentRole)) {
+            throw httpError(403, 'You do not have permission to use chat.');
+        }
+
+        if (dataContext && !canUseChatDataContext(currentRole)) {
+            throw httpError(403, 'You do not have permission to add database context to chat.');
+        }
+
         // We always persist into a conversation thread so the frontend can keep
         // using the existing chat-history UX regardless of response type.
         const currentConversationId = await ensureConversation({
@@ -207,7 +223,7 @@ export async function POST(req) {
     } catch (error) {
         console.error('Structured chat API error:', error);
         const status = typeof error.statusCode === 'number' ? error.statusCode : 500;
-        if (status === 401 || status === 404) {
+        if (status === 401 || status === 403 || status === 404) {
             return NextResponse.json({ error: error.message }, { status });
         }
         return NextResponse.json(

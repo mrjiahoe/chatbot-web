@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ArrowRight, AtSign, CheckCircle2, Loader2, User } from 'lucide-react';
+import { fetchCurrentAccessProfile } from '@/lib/access';
 import { supabase } from '../../lib/supabase';
 import { getSession } from '../../lib/auth';
 import { Button } from '@/components/ui/button';
@@ -29,13 +30,12 @@ export default function OnboardingPage() {
                 return;
             }
 
-            const { data: profile } = await supabase
-                .from('profiles')
-                .select('onboarding_completed')
-                .eq('id', user.id)
-                .single();
+            const accessProfile = await fetchCurrentAccessProfile({
+                supabase,
+                authUser: user,
+            });
 
-            if (profile?.onboarding_completed) {
+            if (accessProfile?.onboarding_completed) {
                 router.replace('/');
             }
         };
@@ -51,6 +51,24 @@ export default function OnboardingPage() {
 
         const timer = setTimeout(async () => {
             setIsChecking(true);
+            const { data: accountData, error: accountError } = await supabase
+                .from('base_account')
+                .select('username')
+                .eq('username', username.toLowerCase())
+                .maybeSingle();
+
+            if (accountError && accountError.code !== 'PGRST116') {
+                console.error(accountError);
+                setIsChecking(false);
+                return;
+            }
+
+            if (accountData) {
+                setUsernameStatus('taken');
+                setIsChecking(false);
+                return;
+            }
+
             const { data, error } = await supabase
                 .from('profiles')
                 .select('username')
@@ -81,15 +99,22 @@ export default function OnboardingPage() {
             data: { user },
         } = await supabase.auth.getUser();
 
-        const { error: updateError } = await supabase.from('profiles').upsert({
-            id: user.id,
-            username: username.toLowerCase(),
-            nickname,
-            onboarding_completed: true,
+        const response = await fetch('/api/account/profile', {
+            method: 'PATCH',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                username: username.toLowerCase(),
+                nickname,
+                onboardingCompleted: true,
+            }),
         });
 
-        if (updateError) {
-            setError(updateError.message);
+        const payload = await response.json().catch(() => ({}));
+
+        if (!response.ok) {
+            setError(payload?.error || 'Unable to complete onboarding right now.');
             setIsLoading(false);
         } else {
             router.replace('/');

@@ -12,12 +12,13 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { canAccessChat, canUseChatDataContext } from '@/lib/roles';
 import ResultVisualization, {
     canVisualizeStructuredResult,
     stripVisualizationTableFromMessage,
 } from './ResultVisualization';
 
-const ChatArea = ({ messages, setMessages, onViewHistory, activeChatId, onConversationCreated, isLoadingChat }) => {
+const ChatArea = ({ messages, setMessages, onViewHistory, activeChatId, onConversationCreated, isLoadingChat, currentRole, canViewHistory }) => {
     const [inputValue, setInputValue] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState(null);
@@ -28,12 +29,21 @@ const ChatArea = ({ messages, setMessages, onViewHistory, activeChatId, onConver
     const [selectedTables, setSelectedTables] = useState([]);
     const [isMenuOpen, setIsMenuOpen] = useState(false);
     const [isFetchingTables, setIsFetchingTables] = useState(false);
+    const canUseChatFeature = canAccessChat(currentRole);
+    const canUseDataContext = canUseChatDataContext(currentRole);
 
     useEffect(() => {
-        if (isMenuOpen) {
+        if (isMenuOpen && canUseDataContext) {
             fetchAvailableTables();
         }
-    }, [isMenuOpen]);
+    }, [isMenuOpen, canUseDataContext]);
+
+    useEffect(() => {
+        if (!canUseDataContext) {
+            setIsMenuOpen(false);
+            setSelectedTables([]);
+        }
+    }, [canUseDataContext]);
 
     const fetchAvailableTables = async () => {
         setIsFetchingTables(true);
@@ -103,10 +113,10 @@ const ChatArea = ({ messages, setMessages, onViewHistory, activeChatId, onConver
 
     const handleSendMessage = async (e) => {
         e.preventDefault();
-        if (!inputValue.trim() || isLoading) return;
+        if (!canUseChatFeature || !inputValue.trim() || isLoading) return;
 
         // Prepare data context string from selected tables
-        const dataContext = selectedTables.length > 0
+        const dataContext = canUseDataContext && selectedTables.length > 0
             ? `CONTEXT TABLES:\n${selectedTables.map(t => `- ${t.name}: ${t.columns.map(c => c.name).join(', ')}`).join('\n')}`
             : '';
 
@@ -196,6 +206,23 @@ const ChatArea = ({ messages, setMessages, onViewHistory, activeChatId, onConver
         }
     };
 
+    if (!canUseChatFeature) {
+        return (
+            <div className="flex-1 overflow-y-auto bg-muted/30 p-6 md:p-10 animate-fade-in custom-scrollbar">
+                <div className="mx-auto max-w-5xl">
+                    <Card className="border-amber-200 bg-amber-50/80 dark:border-amber-900/30 dark:bg-amber-950/20">
+                        <CardHeader>
+                            <CardTitle className="text-amber-900 dark:text-amber-100">Access restricted</CardTitle>
+                            <CardDescription className="text-amber-800/80 dark:text-amber-200/80">
+                                Your current role does not have access to chat.
+                            </CardDescription>
+                        </CardHeader>
+                    </Card>
+                </div>
+            </div>
+        );
+    }
+
     return (
         <div className="flex-1 flex flex-col relative w-full items-center min-h-0">
             {messages.length === 0 && !activeChatId && !isLoadingChat ? (
@@ -214,9 +241,10 @@ const ChatArea = ({ messages, setMessages, onViewHistory, activeChatId, onConver
                         variant="outline"
                         onClick={onViewHistory}
                         className="group rounded-full gap-2 border-zinc-200 text-zinc-600 hover:bg-zinc-50 hover:text-zinc-900 dark:border-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-900 dark:hover:text-white"
+                        disabled={!canViewHistory}
                     >
                         <Clock size={16} className="text-zinc-400 group-hover:text-black dark:group-hover:text-white transition-colors" />
-                        Browse recent files
+                        Browse recent chats
                     </Button>
                 </div>
             ) : isLoadingChat ? (
@@ -402,7 +430,7 @@ const ChatArea = ({ messages, setMessages, onViewHistory, activeChatId, onConver
             <div className="absolute bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-[#fbfbfb] via-[#fbfbfb]/80 to-transparent dark:from-zinc-950 dark:via-zinc-950/80 dark:to-transparent pointer-events-none flex justify-center">
                 <div className="w-full max-w-3xl pointer-events-auto relative">
                     {/* Selected Tables Chips */}
-                    {selectedTables.length > 0 && (
+                    {canUseDataContext && selectedTables.length > 0 && (
                         <div className="flex flex-wrap gap-2 mb-3 px-2">
                             {selectedTables.map(table => (
                                 <div
@@ -427,7 +455,7 @@ const ChatArea = ({ messages, setMessages, onViewHistory, activeChatId, onConver
                     )}
 
                     {/* Table Selection Menu */}
-                    {isMenuOpen && (
+                    {canUseDataContext && isMenuOpen && (
                         <Card className="absolute bottom-full left-0 mb-4 w-80 overflow-hidden border-border/80 shadow-2xl z-[100] pointer-events-auto">
                             <CardHeader className="flex-row items-center justify-between gap-3 border-b border-border bg-muted/20 p-4">
                                 <div>
@@ -514,6 +542,7 @@ const ChatArea = ({ messages, setMessages, onViewHistory, activeChatId, onConver
                             variant={isMenuOpen ? 'secondary' : 'ghost'}
                             size="icon"
                             className="shrink-0 rounded-full"
+                            disabled={!canUseDataContext}
                         >
                             <Plus size={20} className={`transition-transform duration-300 ${isMenuOpen ? 'rotate-45 text-blue-500' : ''}`} />
                         </Button>

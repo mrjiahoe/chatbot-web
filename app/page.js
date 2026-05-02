@@ -1,5 +1,6 @@
 'use client';
 import React, { useState, useEffect } from 'react';
+import { fetchCurrentAccessProfile } from '@/lib/access';
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
 import ChatArea from './components/ChatArea';
@@ -13,7 +14,7 @@ import { supabase } from '../lib/supabase';
 import { getSession, signOut } from '../lib/auth';
 import { useRouter } from 'next/navigation';
 import { Loader2 } from 'lucide-react';
-import { canManageRoles } from '@/lib/roles';
+import { canAccessChat, canAccessDataSources, canAccessRoleDashboard, canViewChatHistory } from '@/lib/roles';
 
 function normalizeGeneratedPayload(value) {
   if (!value || typeof value !== 'object') {
@@ -79,25 +80,20 @@ export default function Page() {
         const currentUser = session.user;
         setUser(currentUser);
 
-        // Now, look in the 'profiles' database table for this user's extra info
-        const { data: profileData } = await supabase
-          .from('profiles')
-          .select('*')
-          .eq('id', currentUser.id)
-          .single();
+        const accessProfile = await fetchCurrentAccessProfile({
+          supabase,
+          authUser: currentUser,
+        });
+        const profileData = accessProfile;
 
-        if (profileData) {
-          // If we found a profile, check if they finished the onboarding (nickname/username)
-          if (!profileData.onboarding_completed) {
-            // Not finished? Send them to the onboarding page
-            router.replace('/onboarding');
-          } else {
-            // All good! Save the profile and let them use the app
-            setProfile(profileData);
-          }
-        } else {
-          // If the user exists but has NO entry in 'profiles' yet, send them to onboard
+        if (!profileData?.hasBaseAccount && !profileData?.hasProfile) {
+          // If the user has no linked account or profile record yet, use onboarding
+          // as the lightweight fallback path for creating their app profile.
           router.replace('/onboarding');
+        } else if (!profileData.onboarding_completed) {
+          router.replace('/onboarding');
+        } else {
+          setProfile(profileData);
         }
       }
     };
@@ -111,7 +107,20 @@ export default function Page() {
   const [messages, setMessages] = useState([]);
   const [activeChatId, setActiveChatId] = useState(null);
   const [recentChats, setRecentChats] = useState([]);
-  const hasRoleManagementAccess = canManageRoles(profile?.role);
+  const currentRole = profile?.effectiveRole || profile?.role;
+  const canUseChat = canAccessChat(currentRole);
+  const canUseHistory = canViewChatHistory(currentRole);
+  const canUseDataSources = canAccessDataSources(currentRole);
+  const hasRoleManagementAccess = canAccessRoleDashboard(currentRole);
+  const accessibleTabs = [
+    ...(canUseChat ? ['Chat'] : []),
+    ...(canUseDataSources ? ['DataCenter'] : []),
+    ...(canUseHistory ? ['HistoryList'] : []),
+    ...(hasRoleManagementAccess ? ['UserRoles'] : []),
+    'Settings',
+    'Help',
+  ];
+  const defaultWorkspaceTab = accessibleTabs[0] || 'Help';
 
   // Persist and restore activeTab from localStorage
   useEffect(() => {
@@ -126,10 +135,10 @@ export default function Page() {
   }, [activeTab]);
 
   useEffect(() => {
-    if (!hasRoleManagementAccess && activeTab === 'UserRoles') {
-      setActiveTab('Chat');
+    if (!accessibleTabs.includes(activeTab)) {
+      setActiveTab(defaultWorkspaceTab);
     }
-  }, [activeTab, hasRoleManagementAccess]);
+  }, [activeTab, accessibleTabs, defaultWorkspaceTab]);
 
   // Persist and restore activeChatId from localStorage
   useEffect(() => {
@@ -145,6 +154,10 @@ export default function Page() {
 
   // Load messages for restored chat
   useEffect(() => {
+    if (!canUseHistory) {
+      return;
+    }
+
     if (activeChatId && messages.length === 0) {
       setIsLoadingChat(true);
       const loadMessages = async () => {
@@ -164,9 +177,16 @@ export default function Page() {
       };
       loadMessages();
     }
-  }, [activeChatId]);
+  }, [activeChatId, canUseHistory, messages.length]);
 
   useEffect(() => {
+    if (!canUseHistory) {
+      setRecentChats([]);
+      setActiveChatId(null);
+      setMessages([]);
+      return;
+    }
+
     const fetchChats = async () => {
       const { data, error } = await supabase
         .from('conversations')
@@ -184,7 +204,7 @@ export default function Page() {
       }
     };
     fetchChats();
-  }, []);
+  }, [canUseHistory]);
 
   const activeChatTitle = recentChats.find(c => c.id === activeChatId)?.title || 'Dashboard';
 
@@ -216,12 +236,22 @@ export default function Page() {
   }, [theme]);
 
   const handleNewChat = () => {
+    if (!canUseChat) {
+      setActiveTab(defaultWorkspaceTab);
+      return;
+    }
+
     setActiveChatId(null);
     setMessages([]);
     setActiveTab('Chat');
   };
 
   const handleSelectChat = async (chatId) => {
+    if (!canUseHistory || !canUseChat) {
+      setActiveTab(defaultWorkspaceTab);
+      return;
+    }
+
     setActiveTab('Chat');
     setActiveChatId(chatId);
     setIsLoadingChat(true);
@@ -322,24 +352,28 @@ export default function Page() {
               <ChatArea
                 messages={messages}
                 setMessages={setMessages}
-                onViewHistory={() => setActiveTab('HistoryList')}
+                onViewHistory={() => canUseHistory && setActiveTab('HistoryList')}
                 activeChatId={activeChatId}
                 onConversationCreated={(id) => {
                   setActiveChatId(id);
                   // Refresh chats list
-                  supabase.from('conversations').select('*').order('updated_at', { ascending: false })
-                    .then(({ data }) => {
-                      if (data) setRecentChats(data.map(c => ({
-                        id: c.id,
-                        title: c.title || 'New Project',
-                        date: new Date(c.created_at).toLocaleDateString()
-                      })));
-                    });
+                  if (canUseHistory) {
+                    supabase.from('conversations').select('*').order('updated_at', { ascending: false })
+                      .then(({ data }) => {
+                        if (data) setRecentChats(data.map(c => ({
+                          id: c.id,
+                          title: c.title || 'New Project',
+                          date: new Date(c.created_at).toLocaleDateString()
+                        })));
+                      });
+                  }
                 }}
                 isLoadingChat={isLoadingChat}
+                currentRole={currentRole}
+                canViewHistory={canUseHistory}
               />
             ) : activeTab === 'DataCenter' ? (
-              <DataView />
+              <DataView currentRole={currentRole} />
             ) : activeTab === 'HistoryList' ? (
               <div className="flex-1 flex flex-col min-h-0 pt-4">
                 <ChatHistoryView
@@ -359,7 +393,7 @@ export default function Page() {
               </div>
             ) : activeTab === 'UserRoles' ? (
               <div className="flex-1 flex flex-col min-h-0 pt-4">
-                <UserRolesView currentRole={profile?.role} />
+                <UserRolesView currentRole={currentRole} />
               </div>
             ) : activeTab === 'Help' ? (
               <div className="flex-1 flex flex-col min-h-0 pt-4">

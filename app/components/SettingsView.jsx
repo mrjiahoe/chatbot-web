@@ -4,7 +4,6 @@ import React, { useEffect, useState } from 'react';
 import {
     AtSign,
     Bell,
-    Globe,
     Key,
     Loader2,
     Mail,
@@ -17,16 +16,15 @@ import {
     User,
     Sun,
 } from 'lucide-react';
+import { fetchCurrentAccessProfile } from '@/lib/access';
 import { supabase } from '../../lib/supabase';
 import { getUser } from '../../lib/auth';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Field, FieldContent, FieldDescription, FieldGroup, FieldLabel } from '@/components/ui/field';
+import { Field, FieldDescription, FieldGroup, FieldLabel } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
 import { Switch } from '@/components/ui/switch';
-import { Textarea } from '@/components/ui/textarea';
 
 const themeOptions = [
     {
@@ -59,6 +57,7 @@ const SettingsView = ({ onProfileUpdate, theme, setTheme }) => {
         role: 'user',
         onboardingCompleted: true,
     });
+    const [profileSource, setProfileSource] = useState('profiles');
     const [bio, setBio] = useState(() =>
         typeof window !== 'undefined'
             ? localStorage.getItem('workspaceBio') || 'Experienced data analyst with a passion for insights and visualization.'
@@ -83,24 +82,22 @@ const SettingsView = ({ onProfileUpdate, theme, setTheme }) => {
             const { user } = await getUser();
 
             if (user) {
-                const { data, error } = await supabase
-                    .from('profiles')
-                    .select('*')
-                    .eq('id', user.id)
-                    .single();
+                const data = await fetchCurrentAccessProfile({
+                    supabase,
+                    authUser: user,
+                });
 
                 if (data) {
+                    setProfileSource(data.roleSource || (data.hasBaseAccount ? 'base_account' : 'profiles'));
                     setProfile({
                         username: data.username || '',
                         nickname: data.nickname || '',
                         firstName: data.first_name || '',
                         lastName: data.last_name || '',
-                        email: user.email || '',
-                        role: data.role || 'user',
+                        email: data.email || user.email || '',
+                        role: data.effectiveRole || data.role || 'user',
                         onboardingCompleted: data.onboarding_completed,
                     });
-                } else if (error && error.code === 'PGRST116') {
-                    setProfile((prev) => ({ ...prev, email: user.email || '' }));
                 }
             }
 
@@ -114,43 +111,44 @@ const SettingsView = ({ onProfileUpdate, theme, setTheme }) => {
         setIsSaving(true);
         setMessage({ type: '', text: '' });
 
-        const { user } = await getUser();
-        if (user) {
-            const { error } = await supabase
-                .from('profiles')
-                .upsert({
-                    id: user.id,
-                    username: profile.username,
-                    nickname: profile.nickname,
-                    first_name: profile.firstName,
-                    last_name: profile.lastName,
-                    onboarding_completed: profile.onboardingCompleted,
-                    updated_at: new Date().toISOString(),
+        const response = await fetch('/api/account/profile', {
+            method: 'PATCH',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                username: profile.username,
+                nickname: profile.nickname,
+                firstName: profile.firstName,
+                lastName: profile.lastName,
+                onboardingCompleted: profile.onboardingCompleted,
+            }),
+        });
+
+        const payload = await response.json().catch(() => ({}));
+
+        if (!response.ok) {
+            setMessage({ type: 'error', text: payload?.error || 'Unable to save settings right now.' });
+        } else {
+            localStorage.setItem('workspaceBio', bio);
+            localStorage.setItem('workspaceLanguage', language);
+
+            setMessage({ type: 'success', text: 'Settings updated successfully!' });
+            setProfileSource(payload?.profile?.roleSource || profileSource);
+
+            if (onProfileUpdate) {
+                onProfileUpdate({
+                    username: payload?.profile?.username || profile.username,
+                    nickname: payload?.profile?.nickname || profile.nickname,
+                    firstName: payload?.profile?.first_name || profile.firstName,
+                    lastName: payload?.profile?.last_name || profile.lastName,
+                    email: payload?.profile?.email || profile.email,
+                    onboardingCompleted: payload?.profile?.onboarding_completed ?? profile.onboardingCompleted,
                 });
-
-            if (error) {
-                setMessage({ type: 'error', text: error.message });
-            } else {
-                localStorage.setItem('workspaceBio', bio);
-                localStorage.setItem('workspaceLanguage', language);
-
-                setMessage({ type: 'success', text: 'Settings updated successfully!' });
-
-                if (onProfileUpdate) {
-                    onProfileUpdate({
-                        username: profile.username,
-                        nickname: profile.nickname,
-                        firstName: profile.firstName,
-                        lastName: profile.lastName,
-                        email: profile.email,
-                        onboardingCompleted: profile.onboardingCompleted,
-                    });
-                }
-
-                setTimeout(() => setMessage({ type: '', text: '' }), 3000);
             }
-        }
 
+            setTimeout(() => setMessage({ type: '', text: '' }), 3000);
+        }
         setIsSaving(false);
     };
 
@@ -220,10 +218,15 @@ const SettingsView = ({ onProfileUpdate, theme, setTheme }) => {
                                         id="username"
                                         type="text"
                                         value={profile.username}
-                                        onChange={(e) => setProfile({ ...profile, username: e.target.value })}
+                                        onChange={(e) => setProfile({ ...profile, username: e.target.value.replace(/[^a-zA-Z0-9_]/g, '') })}
                                         className="pl-9"
                                     />
                                 </div>
+                                <FieldDescription>
+                                    {profileSource === 'base_account'
+                                        ? 'Username is managed in base_account and used for sign-in. Changes here update that record.'
+                                        : 'You can change this anytime.'}
+                                </FieldDescription>
                             </Field>
 
                             <Field>
@@ -238,9 +241,6 @@ const SettingsView = ({ onProfileUpdate, theme, setTheme }) => {
                                         className="pl-9"
                                     />
                                 </div>
-                                <FieldDescription>
-                                    You can change this anytime.
-                                </FieldDescription>
                             </Field>
 
                             <Field>
@@ -281,7 +281,7 @@ const SettingsView = ({ onProfileUpdate, theme, setTheme }) => {
                                     Email cannot be changed directly.
                                 </FieldDescription>
                             </Field>
-                </FieldGroup>
+                        </FieldGroup>
                     </CardContent>
                 </Card>
 
