@@ -237,7 +237,12 @@ export async function PATCH(request) {
                     ? baseAccount.school_name_id
                     : requestedSchoolNameId || null;
 
-            if (requestedSchoolNameId !== undefined && !mergedFlags.is_teacher) {
+            if (
+                requestedSchoolNameId !== undefined &&
+                requestedSchoolNameId !== null &&
+                requestedSchoolNameId !== '' &&
+                !mergedFlags.is_teacher
+            ) {
                 return NextResponse.json(
                     {
                         error: 'School assignment can only be changed when the Teacher flag is enabled.',

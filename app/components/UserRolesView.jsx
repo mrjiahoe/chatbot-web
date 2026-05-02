@@ -279,6 +279,72 @@ const UserRolesView = ({ currentRole }) => {
         }
     };
 
+    const handleClearSchoolScope = async (userId) => {
+        const previousUsers = users;
+
+        setSavingUserId(userId);
+        setBanner({ type: '', text: '' });
+        setUsers((currentUsers) =>
+            currentUsers.map((user) =>
+                user.id === userId
+                    ? {
+                        ...user,
+                        schoolScopeId: null,
+                        schoolScopeName: null,
+                        scopeWarning: null,
+                    }
+                    : user
+            )
+        );
+
+        try {
+            const response = await fetch('/api/admin/users', {
+                method: 'PATCH',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    userId,
+                    schoolNameId: null,
+                }),
+            });
+            const payload = await response.json().catch(() => ({}));
+
+            if (!response.ok) {
+                throw new Error(payload?.error || 'Unable to clear school scope.');
+            }
+
+            setBanner({
+                type: 'success',
+                text: 'School scope cleared successfully.',
+            });
+            setUsers((currentUsers) =>
+                currentUsers.map((user) =>
+                    user.id === userId
+                        ? {
+                            ...user,
+                            effectiveRole: payload.user?.effectiveRole || user.effectiveRole,
+                            roleSource: payload.user?.roleSource || user.roleSource,
+                            baseAccountFlags: payload.user?.baseAccountFlags || user.baseAccountFlags,
+                            schoolScopeId: payload.user?.schoolScopeId ?? null,
+                            schoolScopeName: null,
+                            scopeWarning: null,
+                        }
+                        : user
+                )
+            );
+            await loadUsers({ silent: true });
+        } catch (updateError) {
+            setUsers(previousUsers);
+            setBanner({
+                type: 'error',
+                text: updateError.message || 'Unable to clear school scope.',
+            });
+        } finally {
+            setSavingUserId(null);
+        }
+    };
+
     if (!hasAccess) {
         return (
             <div className="flex-1 overflow-y-auto bg-muted/30 p-6 md:p-10 animate-fade-in custom-scrollbar">
@@ -501,6 +567,18 @@ const UserRolesView = ({ currentRole }) => {
                                                             <div className="text-xs text-muted-foreground">
                                                                 {user.schoolScopeId || 'school_name_id is null'}
                                                             </div>
+                                                            {user.schoolScopeId && !user.baseAccountFlags?.is_teacher && canEditRoles ? (
+                                                                <Button
+                                                                    type="button"
+                                                                    variant="ghost"
+                                                                    size="sm"
+                                                                    className="h-7 px-0 text-xs text-muted-foreground hover:text-foreground"
+                                                                    onClick={() => handleClearSchoolScope(user.id)}
+                                                                    disabled={isSavingRow}
+                                                                >
+                                                                    Clear school assignment
+                                                                </Button>
+                                                            ) : null}
                                                             {user.scopeWarning ? (
                                                                 <div className="text-xs font-medium text-amber-700 dark:text-amber-300">
                                                                     {user.scopeWarning}
