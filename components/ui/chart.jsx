@@ -62,6 +62,41 @@ export function ChartContainer({ id, className, children, config = {}, ...props 
 
 export const ChartTooltip = RechartsTooltip;
 
+export function ChartLegend({ className, children, ...props }) {
+    return (
+        <div
+            className={cn(
+                'flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-muted-foreground',
+                className
+            )}
+            {...props}
+        >
+            {children}
+        </div>
+    );
+}
+
+export function ChartLegendContent({ items = [], className }) {
+    if (!items.length) {
+        return null;
+    }
+
+    return (
+        <ChartLegend className={className}>
+            {items.map((item) => (
+                <div key={item.key || item.label} className="flex items-center gap-2">
+                    <span
+                        className="size-2.5 rounded-full"
+                        style={{ backgroundColor: item.color || 'var(--chart-1)' }}
+                    />
+                    <span className="font-medium text-foreground">{item.label}</span>
+                    {item.meta ? <span className="text-muted-foreground">{item.meta}</span> : null}
+                </div>
+            ))}
+        </ChartLegend>
+    );
+}
+
 export function ChartTooltipContent({
     active,
     payload,

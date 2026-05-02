@@ -24,6 +24,7 @@ import {
 } from '@/components/ui/card';
 import {
     ChartContainer,
+    ChartLegendContent,
     ChartTooltip,
     ChartTooltipContent,
 } from '@/components/ui/chart';
@@ -58,6 +59,11 @@ function formatValue(value) {
     return new Intl.NumberFormat(undefined, {
         maximumFractionDigits: Math.abs(numeric) >= 100 ? 1 : 2,
     }).format(numeric);
+}
+
+function formatChartMetric(value, metricLabel = null) {
+    const formatted = formatValue(value);
+    return metricLabel === 'share_pct' ? `${formatted}%` : formatted;
 }
 
 function getRowLabelKey(row, excludeKeys = []) {
@@ -334,135 +340,213 @@ function truncateLabel(value, limit = 22) {
         : stringValue;
 }
 
+function MetricStrip({ items }) {
+    if (!items?.length) {
+        return null;
+    }
+
+    return (
+        <div className="mb-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            {items.map((item) => (
+                <div key={item.label} className="rounded-xl border border-border/70 bg-card/70 px-3 py-3">
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                        {item.label}
+                    </div>
+                    <div className="mt-1 text-base font-semibold text-foreground">{item.value}</div>
+                </div>
+            ))}
+        </div>
+    );
+}
+
+function buildBarSummary(bars, metricLabel) {
+    if (!bars?.length) {
+        return [];
+    }
+
+    const topBar = [...bars].sort((left, right) => right.value - left.value)[0];
+    const totalValue = bars.reduce((sum, bar) => sum + (bar.value || 0), 0);
+
+    return [
+        { label: 'Categories', value: formatValue(bars.length) },
+        { label: 'Top Segment', value: topBar?.label || 'N/A' },
+        { label: 'Top Value', value: formatChartMetric(topBar?.value, metricLabel) },
+        { label: 'Combined Total', value: formatChartMetric(totalValue, metricLabel) },
+    ];
+}
+
+function CategoryLegend({ items, metricLabel }) {
+    const legendItems = items.slice(0, 5).map((item) => ({
+        key: item.label,
+        label: truncateLabel(item.label, 20),
+        meta: formatChartMetric(item.value, metricLabel),
+        color: item.fill,
+    }));
+
+    return (
+        <ChartLegendContent
+            items={legendItems}
+            className="mt-4 border-t border-border/60 pt-3"
+        />
+    );
+}
+
 function BarList({ bars, metricLabel }) {
     const chartData = bars.slice(0, 12).map((bar, index) => ({
         ...bar,
         fill: CHART_COLORS[index % CHART_COLORS.length],
     }));
+    const summaryItems = buildBarSummary(chartData, metricLabel);
 
     return (
-        <ChartContainer
-            config={{
-                value: {
-                    label: metricLabel === 'share_pct' ? 'Share %' : 'Value',
-                    color: 'var(--chart-1)',
-                },
-            }}
-            className="min-h-[280px]"
-        >
-            <ResponsiveContainer width="100%" height="100%">
-                <RechartsBarChart
-                    accessibilityLayer
-                    data={chartData}
-                    layout="vertical"
-                    margin={{ top: 4, right: 12, bottom: 4, left: 12 }}
-                >
-                    <CartesianGrid horizontal={false} />
-                    <YAxis
-                        dataKey="label"
-                        type="category"
-                        tickLine={false}
-                        axisLine={false}
-                        width={150}
-                        tickFormatter={(value) => truncateLabel(value, 24)}
-                    />
-                    <XAxis
-                        dataKey="value"
-                        type="number"
-                        tickLine={false}
-                        axisLine={false}
-                        tickFormatter={(value) =>
-                            `${formatValue(value)}${metricLabel === 'share_pct' ? '%' : ''}`
-                        }
-                    />
-                    <ChartTooltip
-                        cursor={false}
-                        content={
-                            <ChartTooltipContent
-                                valueFormatter={(value) =>
-                                    `${formatValue(value)}${metricLabel === 'share_pct' ? '%' : ''}`
-                                }
-                                footer={(item) =>
-                                    item?.payload?.secondary != null
-                                        ? `Raw value: ${formatValue(item.payload.secondary)}`
-                                        : null
-                                }
-                            />
-                        }
-                    />
-                    <Bar dataKey="value" radius={8}>
-                        {chartData.map((entry, index) => (
-                            <Cell key={`${entry.label}-${index}`} fill={entry.fill} />
-                        ))}
-                    </Bar>
-                </RechartsBarChart>
-            </ResponsiveContainer>
-        </ChartContainer>
+        <div>
+            <MetricStrip items={summaryItems} />
+            <ChartContainer
+                config={{
+                    value: {
+                        label: metricLabel === 'share_pct' ? 'Share %' : 'Value',
+                        color: 'var(--chart-2)',
+                    },
+                }}
+                className="min-h-[280px]"
+            >
+                <ResponsiveContainer width="100%" height="100%">
+                    <RechartsBarChart
+                        accessibilityLayer
+                        data={chartData}
+                        layout="vertical"
+                        margin={{ top: 4, right: 12, bottom: 4, left: 12 }}
+                    >
+                        <CartesianGrid horizontal={false} strokeDasharray="3 3" />
+                        <YAxis
+                            dataKey="label"
+                            type="category"
+                            tickLine={false}
+                            axisLine={false}
+                            width={150}
+                            tickFormatter={(value) => truncateLabel(value, 24)}
+                        />
+                        <XAxis
+                            dataKey="value"
+                            type="number"
+                            tickLine={false}
+                            axisLine={false}
+                            tickFormatter={(value) => formatChartMetric(value, metricLabel)}
+                        />
+                        <ChartTooltip
+                            cursor={false}
+                            content={
+                                <ChartTooltipContent
+                                    labelFormatter={(value) => value}
+                                    valueFormatter={(value) => formatChartMetric(value, metricLabel)}
+                                    footer={(item) =>
+                                        item?.payload?.secondary != null
+                                            ? `Raw value: ${formatValue(item.payload.secondary)}`
+                                            : null
+                                    }
+                                />
+                            }
+                        />
+                        <Bar dataKey="value" radius={8}>
+                            {chartData.map((entry, index) => (
+                                <Cell key={`${entry.label}-${index}`} fill={entry.fill} />
+                            ))}
+                        </Bar>
+                    </RechartsBarChart>
+                </ResponsiveContainer>
+            </ChartContainer>
+            <CategoryLegend items={chartData} metricLabel={metricLabel} />
+        </div>
     );
 }
 
 function LineChart({ points, xLabel, yLabel }) {
+    const summaryItems = [
+        { label: 'Points', value: formatValue(points.length) },
+        { label: 'Start', value: formatValue(points[0]?.value) },
+        { label: 'Latest', value: formatValue(points[points.length - 1]?.value) },
+        {
+            label: 'Change',
+            value: formatValue((points[points.length - 1]?.value || 0) - (points[0]?.value || 0)),
+        },
+    ];
+
     return (
-        <ChartContainer
-            config={{
-                value: {
-                    label: yLabel || 'Value',
-                    color: 'var(--chart-4)',
-                },
-            }}
-            className="min-h-[280px]"
-        >
-            <ResponsiveContainer width="100%" height="100%">
-                <RechartsLineChart
-                    accessibilityLayer
-                    data={points}
-                    margin={{ top: 4, right: 12, bottom: 4, left: 12 }}
-                >
-                    <CartesianGrid vertical={false} />
-                    <XAxis
-                        dataKey="label"
-                        tickLine={false}
-                        axisLine={false}
-                        interval="preserveStartEnd"
-                        minTickGap={24}
-                        tickFormatter={(value) => truncateLabel(value, 18)}
-                        label={{
-                            value: xLabel,
-                            position: 'insideBottom',
-                            offset: -4,
-                            fill: 'var(--muted-foreground)',
-                        }}
-                    />
-                    <YAxis
-                        tickLine={false}
-                        axisLine={false}
-                        tickFormatter={formatValue}
-                        label={{
-                            value: yLabel,
-                            angle: -90,
-                            position: 'insideLeft',
-                            fill: 'var(--muted-foreground)',
-                        }}
-                    />
-                    <ChartTooltip
-                        cursor={false}
-                        content={<ChartTooltipContent valueFormatter={formatValue} />}
-                    />
-                    <Line
-                        type="monotone"
-                        dataKey="value"
-                        stroke="var(--color-value)"
-                        strokeWidth={3}
-                        dot={{ fill: 'var(--chart-2)', r: 4 }}
-                        activeDot={{ r: 6 }}
-                    />
-                </RechartsLineChart>
-            </ResponsiveContainer>
-        </ChartContainer>
+        <div>
+            <MetricStrip items={summaryItems} />
+            <ChartContainer
+                config={{
+                    value: {
+                        label: yLabel || 'Value',
+                        color: 'var(--chart-1)',
+                    },
+                }}
+                className="min-h-[280px]"
+            >
+                <ResponsiveContainer width="100%" height="100%">
+                    <RechartsLineChart
+                        accessibilityLayer
+                        data={points}
+                        margin={{ top: 4, right: 12, bottom: 4, left: 12 }}
+                    >
+                        <CartesianGrid vertical={false} strokeDasharray="3 3" />
+                        <XAxis
+                            dataKey="label"
+                            tickLine={false}
+                            axisLine={false}
+                            interval="preserveStartEnd"
+                            minTickGap={24}
+                            tickFormatter={(value) => truncateLabel(value, 18)}
+                            label={{
+                                value: xLabel,
+                                position: 'insideBottom',
+                                offset: -4,
+                                fill: 'var(--muted-foreground)',
+                            }}
+                        />
+                        <YAxis
+                            tickLine={false}
+                            axisLine={false}
+                            tickFormatter={formatValue}
+                            label={{
+                                value: yLabel,
+                                angle: -90,
+                                position: 'insideLeft',
+                                fill: 'var(--muted-foreground)',
+                            }}
+                        />
+                        <ChartTooltip
+                            cursor={false}
+                            content={<ChartTooltipContent valueFormatter={formatValue} />}
+                        />
+                        <Line
+                            type="monotone"
+                            dataKey="value"
+                            stroke="var(--color-value)"
+                            strokeWidth={3}
+                            dot={{ fill: 'var(--chart-4)', r: 4 }}
+                            activeDot={{ r: 6, fill: 'var(--chart-2)' }}
+                        />
+                    </RechartsLineChart>
+                </ResponsiveContainer>
+            </ChartContainer>
+            <ChartLegendContent
+                items={[{ key: 'value', label: yLabel || 'Value', color: 'var(--chart-1)', meta: xLabel || null }]}
+                className="mt-4 border-t border-border/60 pt-3"
+            />
+        </div>
     );
 }
 
 function ScatterPlot({ points, xLabel, yLabel, meta }) {
+    const xValues = points.map((point) => point.x);
+    const yValues = points.map((point) => point.y);
+    const summaryItems = [
+        { label: 'Samples', value: formatValue(points.length) },
+        { label: `${xLabel} Min`, value: formatValue(Math.min(...xValues)) },
+        { label: `${yLabel} Max`, value: formatValue(Math.max(...yValues)) },
+    ];
+
     return (
         <div className="space-y-3">
             {meta && (
@@ -475,6 +559,7 @@ function ScatterPlot({ points, xLabel, yLabel, meta }) {
                     }}
                 />
             )}
+            <MetricStrip items={summaryItems} />
             <ChartContainer
                 config={{
                     series: {
@@ -489,7 +574,7 @@ function ScatterPlot({ points, xLabel, yLabel, meta }) {
                         accessibilityLayer
                         margin={{ top: 8, right: 12, bottom: 8, left: 12 }}
                     >
-                        <CartesianGrid />
+                        <CartesianGrid strokeDasharray="3 3" />
                         <XAxis
                             type="number"
                             dataKey="x"
@@ -533,14 +618,29 @@ function ScatterPlot({ points, xLabel, yLabel, meta }) {
                     </RechartsScatterChart>
                 </ResponsiveContainer>
             </ChartContainer>
+            <ChartLegendContent
+                items={[{ key: 'series', label: `${xLabel} vs ${yLabel}`, color: 'var(--chart-3)' }]}
+                className="border-t border-border/60 pt-3"
+            />
         </div>
     );
 }
 
 function Histogram({ bins, stats }) {
+    const totalCount = bins.reduce((sum, bin) => sum + (bin.count || 0), 0);
+    const peakBin = [...bins].sort((left, right) => right.count - left.count)[0];
+
     return (
         <div className="space-y-4">
             {stats && <MetricGrid stats={stats} />}
+            <MetricStrip
+                items={[
+                    { label: 'Bins', value: formatValue(bins.length) },
+                    { label: 'Observations', value: formatValue(totalCount) },
+                    { label: 'Peak Range', value: peakBin?.label || 'N/A' },
+                    { label: 'Peak Count', value: formatValue(peakBin?.count) },
+                ]}
+            />
             <ChartContainer
                 config={{
                     count: {
@@ -556,7 +656,7 @@ function Histogram({ bins, stats }) {
                         data={bins}
                         margin={{ top: 4, right: 12, bottom: 4, left: 12 }}
                     >
-                        <CartesianGrid vertical={false} />
+                        <CartesianGrid vertical={false} strokeDasharray="3 3" />
                         <XAxis
                             dataKey="label"
                             tickLine={false}
@@ -585,6 +685,14 @@ function Histogram({ bins, stats }) {
                     </RechartsBarChart>
                 </ResponsiveContainer>
             </ChartContainer>
+            <CategoryLegend
+                items={bins.map((bin, index) => ({
+                    ...bin,
+                    value: bin.count,
+                    fill: CHART_COLORS[index % CHART_COLORS.length],
+                }))}
+                metricLabel="count"
+            />
         </div>
     );
 }
