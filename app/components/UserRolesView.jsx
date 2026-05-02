@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, Loader2, RefreshCcw, Search, ShieldCheck, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -61,60 +61,66 @@ const baseAccountFlagColumns = [
     { key: 'is_staff', label: 'Staff' },
 ];
 
-function buildConfirmationConfig({ actionType, userName, flagKey = null }) {
-    if (actionType === 'clear_school_scope') {
-        return {
-            title: 'Clear school assignment?',
-            description: `${userName} will no longer have a school linked in base_account.school_name_id.`,
-            confirmLabel: 'Clear assignment',
-            confirmVariant: 'destructive',
-        };
-    }
-
-    if (flagKey === 'is_teacher') {
-        return {
-            title: 'Remove Teacher access?',
-            description: `${userName} will immediately lose teacher-scoped access until Teacher is enabled again.`,
-            confirmLabel: 'Remove Teacher',
-            confirmVariant: 'destructive',
-        };
-    }
-
-    if (flagKey === 'is_superuser') {
-        return {
-            title: 'Grant Super Admin access?',
-            description: `${userName} will gain the highest level of administrative access in the workspace.`,
-            confirmLabel: 'Grant Super Admin',
-            confirmVariant: 'default',
-        };
-    }
-
-    if (flagKey === 'is_admin') {
-        return {
-            title: 'Grant Admin access?',
-            description: `${userName} will gain elevated administrative access across the workspace.`,
-            confirmLabel: 'Grant Admin',
-            confirmVariant: 'default',
-        };
-    }
-
-    return null;
+function deriveScopeWarning(baseAccountFlags, schoolScopeId) {
+    return baseAccountFlags?.is_teacher && !schoolScopeId
+        ? 'Teacher accounts must have a school assignment.'
+        : null;
 }
 
-function buildBulkConfirmationConfig({ actionType, count, flagKey = null }) {
+function mergeUpdatedUser(currentUser, updatedUser, overrides = {}) {
+    const nextSchoolScopeId = updatedUser?.schoolScopeId ?? currentUser.schoolScopeId ?? null;
+
+    return {
+        ...currentUser,
+        effectiveRole: updatedUser?.effectiveRole || currentUser.effectiveRole,
+        roleSource: updatedUser?.roleSource || currentUser.roleSource,
+        baseAccountFlags: updatedUser?.baseAccountFlags || currentUser.baseAccountFlags,
+        schoolScopeId: nextSchoolScopeId,
+        schoolScopeName:
+            overrides.schoolScopeName !== undefined
+                ? overrides.schoolScopeName
+                : currentUser.schoolScopeName,
+        scopeWarning:
+            overrides.scopeWarning !== undefined
+                ? overrides.scopeWarning
+                : deriveScopeWarning(
+                    updatedUser?.baseAccountFlags || currentUser.baseAccountFlags,
+                    nextSchoolScopeId
+                ),
+    };
+}
+
+function buildConfirmationConfig({ scope = 'single', actionType, userName, count = null, flagKey = null }) {
+    const targetLabel =
+        scope === 'bulk'
+            ? `${count} user${count === 1 ? '' : 's'}`
+            : userName;
+
     if (actionType === 'clear_school_scope') {
         return {
-            title: `Clear school assignments for ${count} user${count === 1 ? '' : 's'}?`,
-            description: 'Selected users will no longer have a school linked in base_account.school_name_id.',
-            confirmLabel: 'Clear assignments',
+            title:
+                scope === 'bulk'
+                    ? `Clear school assignments for ${targetLabel}?`
+                    : 'Clear school assignment?',
+            description:
+                scope === 'bulk'
+                    ? 'Selected users will no longer have a school linked in base_account.school_name_id.'
+                    : `${targetLabel} will no longer have a school linked in base_account.school_name_id.`,
+            confirmLabel: scope === 'bulk' ? 'Clear assignments' : 'Clear assignment',
             confirmVariant: 'destructive',
         };
     }
 
     if (flagKey === 'is_teacher') {
         return {
-            title: `Remove Teacher access for ${count} user${count === 1 ? '' : 's'}?`,
-            description: 'Selected users will immediately lose teacher-scoped access until Teacher is enabled again.',
+            title:
+                scope === 'bulk'
+                    ? `Remove Teacher access for ${targetLabel}?`
+                    : 'Remove Teacher access?',
+            description:
+                scope === 'bulk'
+                    ? 'Selected users will immediately lose teacher-scoped access until Teacher is enabled again.'
+                    : `${targetLabel} will immediately lose teacher-scoped access until Teacher is enabled again.`,
             confirmLabel: 'Remove Teacher',
             confirmVariant: 'destructive',
         };
@@ -122,8 +128,14 @@ function buildBulkConfirmationConfig({ actionType, count, flagKey = null }) {
 
     if (flagKey === 'is_superuser') {
         return {
-            title: `Grant Super Admin access to ${count} user${count === 1 ? '' : 's'}?`,
-            description: 'Selected users will gain the highest level of administrative access in the workspace.',
+            title:
+                scope === 'bulk'
+                    ? `Grant Super Admin access to ${targetLabel}?`
+                    : 'Grant Super Admin access?',
+            description:
+                scope === 'bulk'
+                    ? 'Selected users will gain the highest level of administrative access in the workspace.'
+                    : `${targetLabel} will gain the highest level of administrative access in the workspace.`,
             confirmLabel: 'Grant Super Admin',
             confirmVariant: 'default',
         };
@@ -131,8 +143,14 @@ function buildBulkConfirmationConfig({ actionType, count, flagKey = null }) {
 
     if (flagKey === 'is_admin') {
         return {
-            title: `Grant Admin access to ${count} user${count === 1 ? '' : 's'}?`,
-            description: 'Selected users will gain elevated administrative access across the workspace.',
+            title:
+                scope === 'bulk'
+                    ? `Grant Admin access to ${targetLabel}?`
+                    : 'Grant Admin access?',
+            description:
+                scope === 'bulk'
+                    ? 'Selected users will gain elevated administrative access across the workspace.'
+                    : `${targetLabel} will gain elevated administrative access across the workspace.`,
             confirmLabel: 'Grant Admin',
             confirmVariant: 'default',
         };
@@ -155,7 +173,7 @@ const UserRolesView = ({ currentRole }) => {
     const [schoolFilter, setSchoolFilter] = useState('all');
     const [selectedUserIds, setSelectedUserIds] = useState([]);
     const [bulkFlagKey, setBulkFlagKey] = useState('is_active');
-    const [bulkFlagValue, setBulkFlagValue] = useState('true');
+    const [bulkFlagValue, setBulkFlagValue] = useState('enable');
     const [bulkSchoolId, setBulkSchoolId] = useState('');
     const [isBulkSaving, setIsBulkSaving] = useState(false);
     const [pendingConfirmation, setPendingConfirmation] = useState(null);
@@ -240,9 +258,9 @@ const UserRolesView = ({ currentRole }) => {
         selectableFilteredUsers.length > 0 &&
         selectableFilteredUsers.every((user) => selectedUserIds.includes(user.id));
 
-    const bulkTeacherNeedsSchool = bulkFlagKey === 'is_teacher' && bulkFlagValue === 'true';
+    const bulkTeacherNeedsSchool = bulkFlagKey === 'is_teacher' && bulkFlagValue === 'enable';
 
-    const loadUsers = async ({ silent = false } = {}) => {
+    const loadUsers = useCallback(async ({ silent = false } = {}) => {
         if (!hasAccess) {
             setIsLoading(false);
             return;
@@ -274,11 +292,11 @@ const UserRolesView = ({ currentRole }) => {
             setIsLoading(false);
             setIsRefreshing(false);
         }
-    };
+    }, [hasAccess]);
 
     useEffect(() => {
         loadUsers();
-    }, [hasAccess]);
+    }, [loadUsers]);
 
     useEffect(() => {
         setSelectedUserIds((currentIds) =>
@@ -373,18 +391,7 @@ const UserRolesView = ({ currentRole }) => {
             setUsers((currentUsers) =>
                 currentUsers.map((user) =>
                     user.id === userId
-                        ? {
-                            ...user,
-                            effectiveRole: updatedUser?.effectiveRole || user.effectiveRole,
-                            roleSource: updatedUser?.roleSource || user.roleSource,
-                            baseAccountFlags: updatedUser?.baseAccountFlags || user.baseAccountFlags,
-                            schoolScopeId: updatedUser?.schoolScopeId ?? user.schoolScopeId,
-                            scopeWarning:
-                                updatedUser?.baseAccountFlags?.is_teacher &&
-                                !(updatedUser?.schoolScopeId ?? user.schoolScopeId)
-                                    ? 'Teacher accounts must have a school assignment.'
-                                    : null,
-                        }
+                        ? mergeUpdatedUser(user, updatedUser)
                         : user
                 )
             );
@@ -415,7 +422,12 @@ const UserRolesView = ({ currentRole }) => {
         if (requiresConfirmation && confirmationConfig) {
             setPendingConfirmation({
                 ...confirmationConfig,
-                onConfirm: () => executeBaseAccountFlagChange(userId, flagKey, checked),
+                action: {
+                    type: 'single_flag',
+                    userId,
+                    flagKey,
+                    checked,
+                },
             });
             return;
         }
@@ -457,15 +469,10 @@ const UserRolesView = ({ currentRole }) => {
             setUsers((currentUsers) =>
                 currentUsers.map((user) =>
                     user.id === userId
-                        ? {
-                            ...user,
-                            effectiveRole: updatedUser?.effectiveRole || user.effectiveRole,
-                            roleSource: updatedUser?.roleSource || user.roleSource,
-                            baseAccountFlags: updatedUser?.baseAccountFlags || user.baseAccountFlags,
-                            schoolScopeId: updatedUser?.schoolScopeId ?? schoolId,
+                        ? mergeUpdatedUser(user, updatedUser, {
                             schoolScopeName: selectedSchool?.name || user.schoolScopeName,
                             scopeWarning: null,
-                        }
+                        })
                         : user
                 )
             );
@@ -513,15 +520,10 @@ const UserRolesView = ({ currentRole }) => {
             setUsers((currentUsers) =>
                 currentUsers.map((user) =>
                     user.id === userId
-                        ? {
-                            ...user,
-                            effectiveRole: updatedUser?.effectiveRole || user.effectiveRole,
-                            roleSource: updatedUser?.roleSource || user.roleSource,
-                            baseAccountFlags: updatedUser?.baseAccountFlags || user.baseAccountFlags,
-                            schoolScopeId: updatedUser?.schoolScopeId ?? null,
+                        ? mergeUpdatedUser(user, updatedUser, {
                             schoolScopeName: null,
                             scopeWarning: null,
-                        }
+                        })
                         : user
                 )
             );
@@ -546,7 +548,10 @@ const UserRolesView = ({ currentRole }) => {
 
         setPendingConfirmation({
             ...confirmationConfig,
-            onConfirm: () => executeClearSchoolScope(userId),
+            action: {
+                type: 'single_clear_school_scope',
+                userId,
+            },
         });
     };
 
@@ -599,7 +604,7 @@ const UserRolesView = ({ currentRole }) => {
                     await patchAdminUser({
                         userId: user.id,
                         baseAccountFlags: {
-                            [bulkFlagKey]: bulkFlagValue === 'true',
+                            [bulkFlagKey]: bulkFlagValue === 'enable',
                         },
                         schoolNameId: bulkTeacherNeedsSchool ? bulkSchoolId : undefined,
                         fallbackErrorMessage: 'Unable to update one or more users.',
@@ -641,20 +646,23 @@ const UserRolesView = ({ currentRole }) => {
     };
 
     const handleBulkFlagChange = async () => {
-        const confirmationConfig = buildBulkConfirmationConfig({
+        const confirmationConfig = buildConfirmationConfig({
+            scope: 'bulk',
             actionType: 'update_flag',
             count: selectedLinkedUsers.length,
             flagKey: bulkFlagKey,
         });
         const requiresConfirmation =
-            (bulkFlagKey === 'is_teacher' && bulkFlagValue === 'false') ||
-            (bulkFlagKey === 'is_superuser' && bulkFlagValue === 'true') ||
-            (bulkFlagKey === 'is_admin' && bulkFlagValue === 'true');
+            (bulkFlagKey === 'is_teacher' && bulkFlagValue === 'disable') ||
+            (bulkFlagKey === 'is_superuser' && bulkFlagValue === 'enable') ||
+            (bulkFlagKey === 'is_admin' && bulkFlagValue === 'enable');
 
         if (requiresConfirmation && confirmationConfig) {
             setPendingConfirmation({
                 ...confirmationConfig,
-                onConfirm: executeBulkFlagChange,
+                action: {
+                    type: 'bulk_flag',
+                },
             });
             return;
         }
@@ -729,7 +737,8 @@ const UserRolesView = ({ currentRole }) => {
         const eligibleUsers = selectedLinkedUsers.filter(
             (user) => user.schoolScopeId && !user.baseAccountFlags?.is_teacher
         );
-        const confirmationConfig = buildBulkConfirmationConfig({
+        const confirmationConfig = buildConfirmationConfig({
+            scope: 'bulk',
             actionType: 'clear_school_scope',
             count: eligibleUsers.length,
         });
@@ -737,7 +746,9 @@ const UserRolesView = ({ currentRole }) => {
         if (eligibleUsers.length && confirmationConfig) {
             setPendingConfirmation({
                 ...confirmationConfig,
-                onConfirm: executeBulkClearSchoolScope,
+                action: {
+                    type: 'bulk_clear_school_scope',
+                },
             });
             return;
         }
@@ -753,11 +764,30 @@ const UserRolesView = ({ currentRole }) => {
     };
 
     const handleConfirmAction = async () => {
-        const action = pendingConfirmation;
+        const action = pendingConfirmation?.action;
         setPendingConfirmation(null);
 
-        if (action?.onConfirm) {
-            await action.onConfirm();
+        if (!action) {
+            return;
+        }
+
+        if (action.type === 'single_flag') {
+            await executeBaseAccountFlagChange(action.userId, action.flagKey, action.checked);
+            return;
+        }
+
+        if (action.type === 'single_clear_school_scope') {
+            await executeClearSchoolScope(action.userId);
+            return;
+        }
+
+        if (action.type === 'bulk_flag') {
+            await executeBulkFlagChange();
+            return;
+        }
+
+        if (action.type === 'bulk_clear_school_scope') {
+            await executeBulkClearSchoolScope();
         }
     };
 
@@ -956,8 +986,8 @@ const UserRolesView = ({ currentRole }) => {
                                                         <SelectValue placeholder="Choose action" />
                                                     </SelectTrigger>
                                                     <SelectContent>
-                                                        <SelectItem value="true">Enable</SelectItem>
-                                                        <SelectItem value="false">Disable</SelectItem>
+                                                        <SelectItem value="enable">Enable</SelectItem>
+                                                        <SelectItem value="disable">Disable</SelectItem>
                                                     </SelectContent>
                                                 </Select>
                                                 {bulkTeacherNeedsSchool ? (
