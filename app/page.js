@@ -1,5 +1,5 @@
 'use client';
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { fetchCurrentAccessProfile } from '@/lib/access';
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
@@ -112,7 +112,7 @@ export default function Page() {
     checkUser();
     const savedTheme = localStorage.getItem('theme');
     if (savedTheme) setTheme(savedTheme);
-  }, []);
+  }, [router]);
 
   const [activeTab, setActiveTab] = useState('Chat');
   const [messages, setMessages] = useState([]);
@@ -123,15 +123,18 @@ export default function Page() {
   const canUseHistory = canViewChatHistory(currentRole);
   const canUseDataSources = canAccessDataSources(currentRole);
   const hasRoleManagementAccess = canAccessRoleDashboard(currentRole);
-  const accessibleTabs = [
+  const accessibleTabs = useMemo(() => ([
     ...(canUseChat ? ['Chat'] : []),
     ...(canUseDataSources ? ['DataCenter'] : []),
     ...(canUseHistory ? ['HistoryList'] : []),
     ...(hasRoleManagementAccess ? ['UserRoles'] : []),
     'Settings',
     'Help',
-  ];
-  const defaultWorkspaceTab = accessibleTabs[0] || 'Help';
+  ]), [canUseChat, canUseDataSources, canUseHistory, hasRoleManagementAccess]);
+  const defaultWorkspaceTab = useMemo(
+    () => accessibleTabs[0] || 'Help',
+    [accessibleTabs]
+  );
   const activeTabStorageKey = user?.id ? `activeTab:${user.id}` : null;
   const activeChatStorageKey = user?.id ? `activeChatId:${user.id}` : null;
 
