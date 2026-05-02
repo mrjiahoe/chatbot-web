@@ -6,6 +6,16 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import {
     Select,
     SelectContent,
     SelectItem,
@@ -51,6 +61,46 @@ const baseAccountFlagColumns = [
     { key: 'is_staff', label: 'Staff' },
 ];
 
+function buildConfirmationConfig({ actionType, userName, flagKey = null }) {
+    if (actionType === 'clear_school_scope') {
+        return {
+            title: 'Clear school assignment?',
+            description: `${userName} will no longer have a school linked in base_account.school_name_id.`,
+            confirmLabel: 'Clear assignment',
+            confirmVariant: 'destructive',
+        };
+    }
+
+    if (flagKey === 'is_teacher') {
+        return {
+            title: 'Remove Teacher access?',
+            description: `${userName} will immediately lose teacher-scoped access until Teacher is enabled again.`,
+            confirmLabel: 'Remove Teacher',
+            confirmVariant: 'destructive',
+        };
+    }
+
+    if (flagKey === 'is_superuser') {
+        return {
+            title: 'Grant Super Admin access?',
+            description: `${userName} will gain the highest level of administrative access in the workspace.`,
+            confirmLabel: 'Grant Super Admin',
+            confirmVariant: 'default',
+        };
+    }
+
+    if (flagKey === 'is_admin') {
+        return {
+            title: 'Grant Admin access?',
+            description: `${userName} will gain elevated administrative access across the workspace.`,
+            confirmLabel: 'Grant Admin',
+            confirmVariant: 'default',
+        };
+    }
+
+    return null;
+}
+
 const UserRolesView = ({ currentRole }) => {
     const [users, setUsers] = useState([]);
     const [schools, setSchools] = useState([]);
@@ -63,6 +113,7 @@ const UserRolesView = ({ currentRole }) => {
     const [roleFilter, setRoleFilter] = useState('all');
     const [linkFilter, setLinkFilter] = useState('all');
     const [schoolFilter, setSchoolFilter] = useState('all');
+    const [pendingConfirmation, setPendingConfirmation] = useState(null);
     const hasAccess = canAccessRoleDashboard(currentRole);
     const canEditRoles = canManageUserRoles(currentRole);
 
@@ -163,7 +214,7 @@ const UserRolesView = ({ currentRole }) => {
         loadUsers();
     }, [hasAccess]);
 
-    const handleBaseAccountFlagChange = async (userId, flagKey, checked) => {
+    const executeBaseAccountFlagChange = async (userId, flagKey, checked) => {
         const previousUsers = users;
         const targetUser = users.find((user) => user.id === userId);
 
@@ -266,6 +317,29 @@ const UserRolesView = ({ currentRole }) => {
         }
     };
 
+    const handleBaseAccountFlagChange = async (userId, flagKey, checked) => {
+        const targetUser = users.find((user) => user.id === userId);
+        const confirmationConfig = buildConfirmationConfig({
+            actionType: 'update_flag',
+            userName: formatName(targetUser || {}),
+            flagKey,
+        });
+        const requiresConfirmation =
+            (flagKey === 'is_teacher' && checked === false) ||
+            (flagKey === 'is_superuser' && checked === true) ||
+            (flagKey === 'is_admin' && checked === true);
+
+        if (requiresConfirmation && confirmationConfig) {
+            setPendingConfirmation({
+                ...confirmationConfig,
+                onConfirm: () => executeBaseAccountFlagChange(userId, flagKey, checked),
+            });
+            return;
+        }
+
+        await executeBaseAccountFlagChange(userId, flagKey, checked);
+    };
+
     const handleSchoolScopeChange = async (userId, schoolId) => {
         const previousUsers = users;
         const selectedSchool = schools.find((school) => school.id === schoolId);
@@ -334,7 +408,7 @@ const UserRolesView = ({ currentRole }) => {
         }
     };
 
-    const handleClearSchoolScope = async (userId) => {
+    const executeClearSchoolScope = async (userId) => {
         const previousUsers = users;
 
         setSavingUserId(userId);
@@ -400,11 +474,33 @@ const UserRolesView = ({ currentRole }) => {
         }
     };
 
+    const handleClearSchoolScope = (userId) => {
+        const targetUser = users.find((user) => user.id === userId);
+        const confirmationConfig = buildConfirmationConfig({
+            actionType: 'clear_school_scope',
+            userName: formatName(targetUser || {}),
+        });
+
+        setPendingConfirmation({
+            ...confirmationConfig,
+            onConfirm: () => executeClearSchoolScope(userId),
+        });
+    };
+
     const resetFilters = () => {
         setSearchQuery('');
         setRoleFilter('all');
         setLinkFilter('all');
         setSchoolFilter('all');
+    };
+
+    const handleConfirmAction = async () => {
+        const action = pendingConfirmation;
+        setPendingConfirmation(null);
+
+        if (action?.onConfirm) {
+            await action.onConfirm();
+        }
     };
 
     if (!hasAccess) {
@@ -735,6 +831,36 @@ const UserRolesView = ({ currentRole }) => {
                     </CardContent>
                 </Card>
             </div>
+
+            <AlertDialog
+                open={pendingConfirmation !== null}
+                onOpenChange={(open) => !open && setPendingConfirmation(null)}
+            >
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>{pendingConfirmation?.title}</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            {pendingConfirmation?.description}
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+
+                    <AlertDialogFooter>
+                        <AlertDialogCancel asChild>
+                            <Button variant="outline" onClick={() => setPendingConfirmation(null)}>
+                                Cancel
+                            </Button>
+                        </AlertDialogCancel>
+                        <AlertDialogAction asChild>
+                            <Button
+                                variant={pendingConfirmation?.confirmVariant || 'default'}
+                                onClick={handleConfirmAction}
+                            >
+                                {pendingConfirmation?.confirmLabel || 'Confirm'}
+                            </Button>
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
         </div>
     );
 };
