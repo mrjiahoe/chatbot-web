@@ -3,6 +3,13 @@ import { NextResponse } from 'next/server';
 import { getSupabaseAdminClient } from '@/lib/supabase-admin';
 import { getSupabaseEnv } from '@/lib/supabase-env';
 
+class UsernameLookupUnavailableError extends Error {
+    constructor(message = 'Username login is unavailable right now. Please sign in with your email address instead.') {
+        super(message);
+        this.name = 'UsernameLookupUnavailableError';
+    }
+}
+
 function isEmailLike(value) {
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 }
@@ -17,6 +24,22 @@ function isBaseAccountUnavailable(error) {
         code === 'PGRST116' ||
         code === '42703' ||
         message.includes('base_account') ||
+        message.includes('relation') ||
+        message.includes('schema cache')
+    );
+}
+
+function isProfileUsernameUnavailable(error) {
+    const code = error?.code;
+    const message = error?.message || '';
+
+    return (
+        code === '42P01' ||
+        code === 'PGRST205' ||
+        code === 'PGRST116' ||
+        code === '42703' ||
+        message.includes('profiles') ||
+        message.includes('username') ||
         message.includes('relation') ||
         message.includes('schema cache')
     );
@@ -41,7 +64,8 @@ async function resolveEmailFromIdentifier(identifier) {
     }
 
     if (accountError && !isBaseAccountUnavailable(accountError)) {
-        throw new Error('Unable to look up that username right now.');
+        console.error('Username lookup failed against base_account:', accountError);
+        throw new UsernameLookupUnavailableError();
     }
 
     const { data: profile, error: profileError } = await admin
@@ -51,7 +75,15 @@ async function resolveEmailFromIdentifier(identifier) {
         .maybeSingle();
 
     if (profileError) {
-        throw new Error('Unable to look up that username right now.');
+        if (isProfileUsernameUnavailable(profileError)) {
+            console.error('Username lookup failed against profiles:', profileError);
+            throw new UsernameLookupUnavailableError(
+                'Username login is unavailable on this deployment right now. Please sign in with your email address instead.'
+            );
+        }
+
+        console.error('Unexpected profiles lookup error during login:', profileError);
+        throw new UsernameLookupUnavailableError();
     }
 
     if (!profile?.id) {
@@ -61,7 +93,8 @@ async function resolveEmailFromIdentifier(identifier) {
     const { data: userData, error: userError } = await admin.auth.admin.getUserById(profile.id);
 
     if (userError) {
-        throw new Error('Unable to look up that username right now.');
+        console.error('Failed to resolve auth user from profile during login:', userError);
+        throw new UsernameLookupUnavailableError();
     }
 
     return userData.user?.email?.toLowerCase() || null;
@@ -124,6 +157,13 @@ export async function POST(request) {
 
         return response;
     } catch (error) {
+        if (error instanceof UsernameLookupUnavailableError) {
+            return NextResponse.json(
+                { error: error.message },
+                { status: 503 }
+            );
+        }
+
         return NextResponse.json(
             {
                 error: error instanceof Error ? error.message : 'Unable to sign in right now.',
