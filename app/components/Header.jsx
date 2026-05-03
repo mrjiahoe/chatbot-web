@@ -61,7 +61,7 @@ const Header = ({ theme, setTheme, chatTitle, activeChatId, onRenameChat, active
     return (
         <header className="h-16 bg-transparent flex items-center justify-between px-4 md:px-6 z-[100] transition-colors duration-300 w-full max-w-4xl mx-auto relative">
             <div className="flex items-center gap-3 flex-1 min-w-0">
-                <SidebarTrigger className="-ml-1 text-zinc-500 hover:bg-black/5 dark:hover:bg-white/5" />
+                <SidebarTrigger className="-ml-1 text-zinc-500 hover:bg-black/5 dark:hover:bg-white/5 md:hidden" />
                 <div className="flex flex-col flex-1 min-w-0">
                     {isEditing ? (
                         <div className="flex items-center space-x-2 animate-fade-in">

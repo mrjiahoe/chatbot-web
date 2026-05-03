@@ -2,7 +2,6 @@
 
 import React from 'react';
 import {
-    ChartNoAxesCombined,
     Clock,
     Database,
     FileText,
@@ -13,13 +12,18 @@ import {
     Settings,
     ShieldCheck,
     ChevronsUpDown,
+    PanelLeftOpen,
 } from 'lucide-react';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { Sidebar as SidebarRoot, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarRail, SidebarSeparator } from '@/components/ui/sidebar';
+import { Sidebar as SidebarRoot, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarSeparator, SidebarTrigger, useSidebar } from '@/components/ui/sidebar';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { canAccessChat, canAccessDataSources, canAccessRoleDashboard, canViewChatHistory } from '@/lib/roles';
 
+const SIDEBAR_LOGO_SRC = '/logo/logo.png?v=20260503-1532';
+
 const Sidebar = ({ activeTab, setActiveTab, onNewChat, onSelectChat, recentChats, activeChatId, onLogout, user, profile }) => {
+    const { toggleSidebar } = useSidebar();
     const displayName = profile?.nickname || user?.email?.split('@')[0] || 'User Profile';
     const secondaryLabel = profile?.username ? `@${profile.username}` : user?.email || 'Free Plan';
     const currentRole = profile?.effectiveRole || profile?.role;
@@ -43,16 +47,47 @@ const Sidebar = ({ activeTab, setActiveTab, onNewChat, onSelectChat, recentChats
     ];
 
     return (
-        <SidebarRoot collapsible="icon" className="border-r border-sidebar-border/80 bg-sidebar" >
-            <SidebarHeader className="gap-4 border-b border-sidebar-border p-4">
-                <div className="flex items-center gap-3 px-1">
-                    <div className="flex size-10 items-center justify-center rounded-xl bg-sidebar-primary text-sidebar-primary-foreground shadow-sm">
-                        <ChartNoAxesCombined size={25} />
+        <SidebarRoot
+            collapsible="icon"
+            className="border-r border-sidebar-border/80 bg-sidebar"
+            style={{ '--sidebar-width-icon': '5rem' }}
+        >
+            <SidebarHeader className="gap-4 border-b border-sidebar-border p-4 group-data-[collapsible=icon]:items-center group-data-[collapsible=icon]:px-2 group-data-[collapsible=icon]:py-3">
+                <div className="flex items-start justify-between gap-3 px-1 group-data-[collapsible=icon]:w-full group-data-[collapsible=icon]:flex-col group-data-[collapsible=icon]:items-center group-data-[collapsible=icon]:justify-start group-data-[collapsible=icon]:gap-2 group-data-[collapsible=icon]:px-0">
+                    <div className="flex min-w-0 items-center gap-3 group-data-[collapsible=icon]:w-full group-data-[collapsible=icon]:justify-center">
+                        <div className="relative flex size-12 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-sidebar-border/60 bg-white shadow-sm group-data-[collapsible=icon]:hidden dark:bg-sidebar-accent/20">
+                            <img
+                                src={SIDEBAR_LOGO_SRC}
+                                alt="NaLDAC logo"
+                                className="h-full w-full object-contain p-1"
+                            />
+                        </div>
+                        <Tooltip>
+                            <TooltipTrigger asChild>
+                                <button
+                                    type="button"
+                                    onClick={toggleSidebar}
+                                    aria-label="Expand sidebar"
+                                    className="group/logo-toggle relative hidden size-12 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-sidebar-border/60 bg-white shadow-sm transition-all duration-200 hover:scale-[1.03] hover:bg-sidebar-accent/35 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring dark:bg-sidebar-accent/20 group-data-[collapsible=icon]:mx-auto group-data-[collapsible=icon]:flex"
+                                >
+                                    <img
+                                        src={SIDEBAR_LOGO_SRC}
+                                        alt="NaLDAC logo"
+                                        className="h-full w-full object-contain p-1 transition-all duration-200 group-hover/logo-toggle:-rotate-90 group-hover/logo-toggle:scale-75 group-hover/logo-toggle:opacity-0"
+                                    />
+                                    <PanelLeftOpen className="absolute size-6 shrink-0 rotate-90 text-sidebar-foreground opacity-0 transition-all duration-200 group-hover/logo-toggle:rotate-0 group-hover/logo-toggle:opacity-100" />
+                                </button>
+                            </TooltipTrigger>
+                            <TooltipContent side="right" align="center" sideOffset={10}>
+                                Expand sidebar
+                            </TooltipContent>
+                        </Tooltip>
+                        <div className="grid min-w-0 flex-1 leading-tight transition-opacity duration-200 group-data-[collapsible=icon]:hidden">
+                            <span className="truncate text-xl font-semibold">NaLDAC</span>
+                            <span className="truncate text-sm text-sidebar-foreground/70">AI analysis chatbot</span>
+                        </div>
                     </div>
-                    <div className="grid min-w-0 flex-1 leading-tight transition-opacity duration-200 group-data-[collapsible=icon]/sidebar-wrapper:opacity-0">
-                        <span className="truncate text-xl font-semibold">NaLDAC</span>
-                        <span className="truncate text-sm text-sidebar-foreground/70">AI analysis chatbot</span>
-                    </div>
+                    <SidebarTrigger className="hidden shrink-0 text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground md:inline-flex group-data-[collapsible=icon]:hidden" />
                 </div>
 
                 <SidebarMenu>
@@ -126,7 +161,7 @@ const Sidebar = ({ activeTab, setActiveTab, onNewChat, onSelectChat, recentChats
                 ) : null}
             </SidebarContent>
 
-            <SidebarFooter className="border-t border-sidebar-border p-3">
+            <SidebarFooter className="border-t border-sidebar-border p-3 group-data-[collapsible=icon]:items-center">
                 <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                         <SidebarMenuButton
@@ -184,8 +219,6 @@ const Sidebar = ({ activeTab, setActiveTab, onNewChat, onSelectChat, recentChats
                     </DropdownMenuContent>
                 </DropdownMenu>
             </SidebarFooter>
-
-            <SidebarRail />
         </SidebarRoot>
     );
 };
