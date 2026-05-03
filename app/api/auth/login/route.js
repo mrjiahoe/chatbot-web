@@ -10,6 +10,13 @@ class UsernameLookupUnavailableError extends Error {
     }
 }
 
+class BlockedAccountError extends Error {
+    constructor(message = 'Your account is blocked. Contact a super admin to restore access.') {
+        super(message);
+        this.name = 'BlockedAccountError';
+    }
+}
+
 function isEmailLike(value) {
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 }
@@ -100,6 +107,26 @@ async function resolveEmailFromIdentifier(identifier) {
     return userData.user?.email?.toLowerCase() || null;
 }
 
+async function findBaseAccountByEmail(email) {
+    const admin = getSupabaseAdminClient();
+    const { data: account, error } = await admin
+        .from('base_account')
+        .select('auth_user_id, email, is_active')
+        .eq('email', email)
+        .maybeSingle();
+
+    if (error) {
+        if (isBaseAccountUnavailable(error)) {
+            return null;
+        }
+
+        console.error('Failed to look up base_account by email during login:', error);
+        throw new Error('Unable to verify account access right now.');
+    }
+
+    return account || null;
+}
+
 export async function POST(request) {
     try {
         const body = await request.json();
@@ -120,6 +147,12 @@ export async function POST(request) {
                 { error: 'Invalid login credentials.' },
                 { status: 400 }
             );
+        }
+
+        const baseAccount = await findBaseAccountByEmail(email);
+
+        if (baseAccount?.is_active === false) {
+            throw new BlockedAccountError();
         }
 
         const { supabaseUrl, supabasePublishableKey } = getSupabaseEnv();
@@ -157,6 +190,13 @@ export async function POST(request) {
 
         return response;
     } catch (error) {
+        if (error instanceof BlockedAccountError) {
+            return NextResponse.json(
+                { error: error.message },
+                { status: 403 }
+            );
+        }
+
         if (error instanceof UsernameLookupUnavailableError) {
             return NextResponse.json(
                 { error: error.message },

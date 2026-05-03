@@ -156,6 +156,22 @@ function buildConfirmationConfig({ scope = 'single', actionType, userName, count
         };
     }
 
+    if (actionType === 'toggle_block') {
+        const isBlocking = flagKey === 'block';
+
+        return {
+            title:
+                scope === 'bulk'
+                    ? `${isBlocking ? 'Block' : 'Unblock'} ${targetLabel}?`
+                    : `${isBlocking ? 'Block' : 'Unblock'} user?`,
+            description: isBlocking
+                ? `${targetLabel} will no longer be able to log in or use the chatbot until access is restored.`
+                : `${targetLabel} will be able to log in and use the chatbot again.`,
+            confirmLabel: isBlocking ? 'Block user' : 'Unblock user',
+            confirmVariant: isBlocking ? 'destructive' : 'default',
+        };
+    }
+
     return null;
 }
 
@@ -733,6 +749,91 @@ const UserRolesView = ({ currentRole }) => {
         }
     };
 
+    const executeBlockToggle = async (userId, shouldBlock) => {
+        const previousUsers = users;
+        const targetUser = users.find((user) => user.id === userId);
+
+        if (!targetUser) {
+            return;
+        }
+
+        if (targetUser.roleSource !== 'base_account') {
+            setBanner({
+                type: 'error',
+                text: 'Only users linked to base_account can be blocked.',
+            });
+            return;
+        }
+
+        if (targetUser.isCurrentUser) {
+            setBanner({
+                type: 'error',
+                text: 'You cannot block your own account.',
+            });
+            return;
+        }
+
+        setSavingUserId(userId);
+        setBanner({ type: '', text: '' });
+
+        try {
+            const updatedUser = await patchAdminUser({
+                userId,
+                baseAccountFlags: {
+                    is_active: !shouldBlock,
+                },
+                fallbackErrorMessage: shouldBlock
+                    ? 'Unable to block this user.'
+                    : 'Unable to unblock this user.',
+            });
+
+            setUsers((currentUsers) =>
+                currentUsers.map((user) =>
+                    user.id === userId
+                        ? mergeUpdatedUser(user, updatedUser)
+                        : user
+                )
+            );
+            setBanner({
+                type: 'success',
+                text: shouldBlock
+                    ? `${formatName(targetUser)} has been blocked.`
+                    : `${formatName(targetUser)} has been unblocked.`,
+            });
+        } catch (updateError) {
+            setUsers(previousUsers);
+            setBanner({
+                type: 'error',
+                text: updateError.message || (shouldBlock ? 'Unable to block this user.' : 'Unable to unblock this user.'),
+            });
+        } finally {
+            setSavingUserId(null);
+        }
+    };
+
+    const handleBlockToggle = (user) => {
+        const isBlocked = user.baseAccountFlags?.is_active === false;
+        const confirmationConfig = buildConfirmationConfig({
+            scope: 'single',
+            actionType: 'toggle_block',
+            userName: formatName(user),
+            flagKey: isBlocked ? 'unblock' : 'block',
+        });
+
+        if (!confirmationConfig) {
+            return;
+        }
+
+        setPendingConfirmation({
+            ...confirmationConfig,
+            action: {
+                type: 'single_toggle_block',
+                userId: user.id,
+                shouldBlock: !isBlocked,
+            },
+        });
+    };
+
     const handleBulkClearSchoolScope = () => {
         const eligibleUsers = selectedLinkedUsers.filter(
             (user) => user.schoolScopeId && !user.baseAccountFlags?.is_teacher
@@ -778,6 +879,11 @@ const UserRolesView = ({ currentRole }) => {
 
         if (action.type === 'single_clear_school_scope') {
             await executeClearSchoolScope(action.userId);
+            return;
+        }
+
+        if (action.type === 'single_toggle_block') {
+            await executeBlockToggle(action.userId, action.shouldBlock);
             return;
         }
 
@@ -1065,6 +1171,7 @@ const UserRolesView = ({ currentRole }) => {
                                             </TableHead>
                                         ))}
                                         <TableHead>School Scope</TableHead>
+                                        <TableHead className="w-[180px]">Access</TableHead>
                                         <TableHead className="w-[220px]">Effective Role</TableHead>
                                     </TableRow>
                                 </TableHeader>
@@ -1191,6 +1298,39 @@ const UserRolesView = ({ currentRole }) => {
                                                             {user.scopeWarning ? (
                                                                 <div className="text-xs font-medium text-amber-700 dark:text-amber-300">
                                                                     {user.scopeWarning}
+                                                                </div>
+                                                            ) : null}
+                                                        </div>
+                                                    ) : (
+                                                        <span className="text-xs text-muted-foreground">-</span>
+                                                    )}
+                                                </TableCell>
+                                                <TableCell>
+                                                    {user.roleSource === 'base_account' ? (
+                                                        <div className="space-y-2">
+                                                            <div
+                                                                className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ${
+                                                                    user.baseAccountFlags?.is_active === false
+                                                                        ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300'
+                                                                        : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300'
+                                                                }`}
+                                                            >
+                                                                {user.baseAccountFlags?.is_active === false ? 'Blocked' : 'Active'}
+                                                            </div>
+                                                            <div>
+                                                                <Button
+                                                                    type="button"
+                                                                    variant={user.baseAccountFlags?.is_active === false ? 'outline' : 'destructive'}
+                                                                    size="sm"
+                                                                    onClick={() => handleBlockToggle(user)}
+                                                                    disabled={isSavingRow || isBulkSaving || !canEditRoles || user.isCurrentUser}
+                                                                >
+                                                                    {user.baseAccountFlags?.is_active === false ? 'Unblock' : 'Block'}
+                                                                </Button>
+                                                            </div>
+                                                            {user.isCurrentUser ? (
+                                                                <div className="text-xs text-muted-foreground">
+                                                                    You cannot block yourself.
                                                                 </div>
                                                             ) : null}
                                                         </div>

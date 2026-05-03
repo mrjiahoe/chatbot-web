@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import {
     AtSign,
     ArrowRight,
@@ -22,6 +22,8 @@ export function LoginForm() {
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState(null);
     const router = useRouter();
+    const searchParams = useSearchParams();
+    const blockedNotice = searchParams.get('blocked') === '1';
 
     const handleLogin = async (event) => {
         event.preventDefault();
@@ -94,6 +96,12 @@ export function LoginForm() {
                 {error && (
                     <div className="rounded-md border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
                         {error}
+                    </div>
+                )}
+
+                {!error && blockedNotice && (
+                    <div className="rounded-md border border-amber-300/60 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-900/40 dark:bg-amber-950/20 dark:text-amber-200">
+                        Your account is currently blocked. Contact a super admin to restore access.
                     </div>
                 )}
 

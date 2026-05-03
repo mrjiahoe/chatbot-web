@@ -95,6 +95,12 @@ export default function Page() {
           });
           const profileData = accessProfile;
 
+          if (profileData?.hasBaseAccount && profileData?.baseAccount?.is_active === false) {
+            await signOut();
+            router.replace('/login?blocked=1');
+            return;
+          }
+
           if (!profileData?.hasBaseAccount && !profileData?.hasProfile) {
             // If the user has no linked account or profile record yet, use onboarding
             // as the lightweight fallback path for creating their app profile.
