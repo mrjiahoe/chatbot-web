@@ -66,6 +66,16 @@ function buildPersistedGeneratedJson(responsePayload) {
     };
 }
 
+function attachResponseTiming(responsePayload, durationMs) {
+    return {
+        ...responsePayload,
+        execution: {
+            ...(responsePayload.execution || {}),
+            durationMs,
+        },
+    };
+}
+
 async function ensureConversation({ supabase, conversationId, message, userId }) {
     if (conversationId) {
         const { data, error } = await supabase
@@ -112,7 +122,16 @@ async function ensureConversation({ supabase, conversationId, message, userId })
     return data.id;
 }
 
-async function persistMessage({ supabase, conversationId, role, content, tokenUsage = null, generatedSql = null, generatedJson = null }) {
+async function persistMessage({
+    supabase,
+    conversationId,
+    role,
+    content,
+    tokenUsage = null,
+    generatedSql = null,
+    generatedJson = null,
+    executionTimeMs = null,
+}) {
     if (!conversationId) {
         return;
     }
@@ -126,12 +145,20 @@ async function persistMessage({ supabase, conversationId, role, content, tokenUs
         token_usage: tokenUsage,
         generated_sql: generatedSql,
         generated_json: generatedJson,
+        execution_time_ms: executionTimeMs,
     };
     let { error } = await supabase
         .from('messages')
         .insert(fullPayload);
 
     if (error?.code === 'PGRST204') {
+        console.warn(
+            `messages table is missing one or more chat diagnostics columns; falling back to plain ${role} message insert.`,
+            {
+                expectedColumns: ['token_usage', 'generated_sql', 'generated_json', 'execution_time_ms'],
+                error,
+            }
+        );
         const fallbackPayload = {
             conversation_id: conversationId,
             role,
@@ -213,6 +240,7 @@ export async function POST(req) {
 
         // The controller decides whether this message should be answered as a
         // general AI reply or as a structured analytics request.
+        const responseStartedAt = Date.now();
         const responsePayload = await handleStructuredChat({
             message,
             history,
@@ -220,21 +248,26 @@ export async function POST(req) {
             supabase,
             registrySupabase,
         });
+        const timedResponsePayload = attachResponseTiming(
+            responsePayload,
+            Date.now() - responseStartedAt
+        );
 
         await persistMessage({
             supabase,
             conversationId: currentConversationId,
             role: 'model',
-            content: responsePayload.message,
-            tokenUsage: responsePayload.tokenUsage || null,
-            generatedSql: responsePayload.generatedSql || null,
-            generatedJson: buildPersistedGeneratedJson(responsePayload),
+            content: timedResponsePayload.message,
+            tokenUsage: timedResponsePayload.tokenUsage || null,
+            generatedSql: timedResponsePayload.generatedSql || null,
+            generatedJson: buildPersistedGeneratedJson(timedResponsePayload),
+            executionTimeMs: timedResponsePayload.execution?.durationMs ?? null,
         });
 
         return NextResponse.json(
             {
                 conversationId: currentConversationId,
-                ...responsePayload,
+                ...timedResponsePayload,
             },
             {
                 status: 200,

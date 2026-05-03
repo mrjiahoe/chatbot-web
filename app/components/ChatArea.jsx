@@ -18,6 +18,43 @@ import ResultVisualization, {
     stripVisualizationTableFromMessage,
 } from './ResultVisualization';
 
+function getTokenUsage(message) {
+    const usage = message?.tokenUsage || message?.token_usage || null;
+
+    if (!usage || typeof usage !== 'object') {
+        return null;
+    }
+
+    return {
+        promptTokenCount: usage.promptTokenCount ?? usage.prompt_token_count ?? null,
+        candidatesTokenCount: usage.candidatesTokenCount ?? usage.candidates_token_count ?? null,
+        totalTokenCount: usage.totalTokenCount ?? usage.total_token_count ?? null,
+        cachedContentTokenCount:
+            usage.cachedContentTokenCount ?? usage.cached_content_token_count ?? null,
+    };
+}
+
+function getResponseDuration(message) {
+    const durationMs =
+        message?.execution?.durationMs ??
+        message?.execution?.duration_ms ??
+        message?.responseDurationMs ??
+        message?.response_duration_ms ??
+        null;
+
+    return typeof durationMs === 'number' && Number.isFinite(durationMs)
+        ? durationMs
+        : null;
+}
+
+function formatResponseDuration(durationMs) {
+    if (!durationMs || durationMs < 1000) {
+        return `${durationMs || 0} ms`;
+    }
+
+    return `${(durationMs / 1000).toFixed(durationMs >= 10000 ? 0 : 1)} s`;
+}
+
 const ChatArea = ({
     messages,
     setMessages,
@@ -256,6 +293,8 @@ const ChatArea = ({
                 >
                     <div className="max-w-3xl mx-auto space-y-10 py-8">
                         {messages.map((message) => {
+                            const tokenUsage = getTokenUsage(message);
+                            const responseDuration = getResponseDuration(message);
                             const hasVisualization = message.sender === 'bot' && canVisualizeStructuredResult({
                                 execution: message.execution,
                                 data: message.resultData,
@@ -333,20 +372,31 @@ const ChatArea = ({
                                                 {displayText}
                                             </ReactMarkdown>
                                         </div>
-                                        {message.sender === 'bot' && (message.tokenUsage || message.token_usage) && ((message.tokenUsage || message.token_usage).promptTokenCount || (message.tokenUsage || message.token_usage).candidatesTokenCount) && (
+                                        {message.sender === 'bot' && ((tokenUsage && (tokenUsage.promptTokenCount || tokenUsage.candidatesTokenCount || tokenUsage.totalTokenCount)) || responseDuration) && (
                                             <div className="flex flex-wrap items-center gap-3 border-t border-border pt-3 text-xs text-muted-foreground">
-                                                <span className="font-mono flex items-center gap-1">
-                                                    <span>📊</span>
-                                                    <span className="text-muted-foreground">Tokens:</span>
-                                                </span>
-                                                {(message.tokenUsage || message.token_usage)?.promptTokenCount && (
-                                                    <span className="font-mono">Input: <span className="text-blue-500">{(message.tokenUsage || message.token_usage).promptTokenCount}</span></span>
+                                                {responseDuration && (
+                                                    <span className="font-mono flex items-center gap-1">
+                                                        <span>⏱</span>
+                                                        <span>Time:</span>
+                                                        <span className="font-semibold text-foreground">{formatResponseDuration(responseDuration)}</span>
+                                                    </span>
                                                 )}
-                                                {(message.tokenUsage || message.token_usage)?.candidatesTokenCount && (
-                                                    <span className="font-mono">Output: <span className="text-green-500">{(message.tokenUsage || message.token_usage).candidatesTokenCount}</span></span>
-                                                )}
-                                                {(message.tokenUsage || message.token_usage)?.totalTokenCount && (
-                                                    <span className="font-mono">Total: <span className="font-semibold text-purple-500">{(message.tokenUsage || message.token_usage).totalTokenCount}</span></span>
+                                                {tokenUsage && (tokenUsage.promptTokenCount || tokenUsage.candidatesTokenCount || tokenUsage.totalTokenCount) && (
+                                                    <>
+                                                        <span className="font-mono flex items-center gap-1">
+                                                            <span>📊</span>
+                                                            <span className="text-muted-foreground">Tokens:</span>
+                                                        </span>
+                                                        {tokenUsage.promptTokenCount && (
+                                                            <span className="font-mono">Input: <span className="text-blue-500">{tokenUsage.promptTokenCount}</span></span>
+                                                        )}
+                                                        {tokenUsage.candidatesTokenCount && (
+                                                            <span className="font-mono">Output: <span className="text-green-500">{tokenUsage.candidatesTokenCount}</span></span>
+                                                        )}
+                                                        {tokenUsage.totalTokenCount && (
+                                                            <span className="font-mono">Total: <span className="font-semibold text-purple-500">{tokenUsage.totalTokenCount}</span></span>
+                                                        )}
+                                                    </>
                                                 )}
                                             </div>
                                         )}

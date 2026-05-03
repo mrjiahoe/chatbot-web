@@ -55,6 +55,7 @@ function toUiMessage(msg) {
     generatedJson: normalized.generatedJson,
     resultData: normalized.resultData,
     execution: normalized.execution,
+    responseDurationMs: msg.execution_time_ms,
   };
 }
 
