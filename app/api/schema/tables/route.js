@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { buildSchemaRegistry } from '@/lib/schemaRegistry';
 import { getServerSupabaseClient } from '@/lib/serverSupabase';
 
+const HIDDEN_DATA_SOURCE_TABLES = new Set(['base_account']);
+
 export async function GET() {
     try {
         const supabase = await getServerSupabaseClient();
@@ -31,9 +33,9 @@ export async function GET() {
                 });
             });
 
-            const tables = Array.from(groupedTables.values()).sort((left, right) =>
-                left.name.localeCompare(right.name)
-            );
+            const tables = Array.from(groupedTables.values())
+                .filter((table) => !HIDDEN_DATA_SOURCE_TABLES.has(table.name))
+                .sort((left, right) => left.name.localeCompare(right.name));
 
             return NextResponse.json({ tables });
         }
@@ -53,6 +55,7 @@ export async function GET() {
                     type: column.type,
                 })),
             }))
+            .filter((table) => !HIDDEN_DATA_SOURCE_TABLES.has(table.name))
             .sort((left, right) => left.name.localeCompare(right.name));
 
         return NextResponse.json({ tables });

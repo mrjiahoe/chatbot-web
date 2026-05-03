@@ -6,6 +6,7 @@ import { getServerSupabaseClient } from '@/lib/serverSupabase';
 
 const DEFAULT_PREVIEW_LIMIT = 25;
 const MAX_PREVIEW_LIMIT = 100;
+const HIDDEN_DATA_SOURCE_TABLES = new Set(['base_account']);
 
 export async function GET(request) {
     try {
@@ -40,13 +41,17 @@ export async function GET(request) {
             return NextResponse.json({ error: 'Table name is required.' }, { status: 400 });
         }
 
+        if (HIDDEN_DATA_SOURCE_TABLES.has(tableName)) {
+            return NextResponse.json({ error: 'Table not found in allowed schema.' }, { status: 404 });
+        }
+
         const registry = await buildSchemaRegistry({
             dataContext: '',
             supabase,
         });
         const tableConfig = getTableConfig(registry, tableName);
 
-        if (!tableConfig) {
+        if (!tableConfig || HIDDEN_DATA_SOURCE_TABLES.has(tableConfig.name)) {
             return NextResponse.json({ error: 'Table not found in allowed schema.' }, { status: 404 });
         }
 
