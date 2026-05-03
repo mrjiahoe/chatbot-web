@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react';
 import {
     AtSign,
     Bell,
+    Bot,
     Key,
     Loader2,
     Mail,
@@ -47,7 +48,14 @@ const themeOptions = [
     },
 ];
 
-const SettingsView = ({ onProfileUpdate, theme, setTheme }) => {
+const SettingsView = ({
+    onProfileUpdate,
+    theme,
+    setTheme,
+    assistantName,
+    defaultAssistantName = 'AI Analyst',
+    onAssistantNameSave,
+}) => {
     const [profile, setProfile] = useState({
         username: '',
         nickname: '',
@@ -74,8 +82,14 @@ const SettingsView = ({ onProfileUpdate, theme, setTheme }) => {
         digest: true,
     });
     const [isLoading, setIsLoading] = useState(true);
-    const [isSaving, setIsSaving] = useState(false);
+    const [isSavingProfile, setIsSavingProfile] = useState(false);
+    const [isSavingAppearance, setIsSavingAppearance] = useState(false);
     const [message, setMessage] = useState({ type: '', text: '' });
+    const [assistantNameDraft, setAssistantNameDraft] = useState(assistantName || defaultAssistantName);
+
+    useEffect(() => {
+        setAssistantNameDraft(assistantName || defaultAssistantName);
+    }, [assistantName, defaultAssistantName]);
 
     useEffect(() => {
         const fetchProfile = async () => {
@@ -117,8 +131,8 @@ const SettingsView = ({ onProfileUpdate, theme, setTheme }) => {
         fetchProfile();
     }, []);
 
-    const handleSave = async () => {
-        setIsSaving(true);
+    const handleProfileSave = async () => {
+        setIsSavingProfile(true);
         setMessage({ type: '', text: '' });
 
         const response = await fetch('/api/account/profile', {
@@ -138,12 +152,12 @@ const SettingsView = ({ onProfileUpdate, theme, setTheme }) => {
         const payload = await response.json().catch(() => ({}));
 
         if (!response.ok) {
-            setMessage({ type: 'error', text: payload?.error || 'Unable to save settings right now.' });
+            setMessage({
+                type: 'error',
+                text: payload?.error || 'Unable to save profile settings right now.',
+            });
         } else {
-            localStorage.setItem('workspaceBio', bio);
-            localStorage.setItem('workspaceLanguage', language);
-
-            setMessage({ type: 'success', text: 'Settings updated successfully!' });
+            setMessage({ type: 'success', text: 'Profile updated successfully!' });
             setProfileSource(payload?.profile?.roleSource || profileSource);
 
             if (onProfileUpdate) {
@@ -159,7 +173,22 @@ const SettingsView = ({ onProfileUpdate, theme, setTheme }) => {
 
             setTimeout(() => setMessage({ type: '', text: '' }), 3000);
         }
-        setIsSaving(false);
+        setIsSavingProfile(false);
+    };
+
+    const handleAppearanceSave = async () => {
+        setIsSavingAppearance(true);
+        setMessage({ type: '', text: '' });
+
+        const normalizedAssistantName = assistantNameDraft.trim() || defaultAssistantName;
+
+        localStorage.setItem('assistantName', normalizedAssistantName);
+        onAssistantNameSave?.(normalizedAssistantName);
+        setAssistantNameDraft(normalizedAssistantName);
+        setMessage({ type: 'success', text: 'Appearance updated successfully!' });
+
+        setTimeout(() => setMessage({ type: '', text: '' }), 3000);
+        setIsSavingAppearance(false);
     };
 
     if (isLoading) {
@@ -185,15 +214,6 @@ const SettingsView = ({ onProfileUpdate, theme, setTheme }) => {
                             Manage your profile, notifications, and a few app preferences from one place.
                         </p>
                     </div>
-
-                    <Button
-                        onClick={handleSave}
-                        disabled={isSaving}
-                        className="gap-2 transition-colors hover:bg-emerald-600 hover:text-white"
-                    >
-                        {isSaving ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
-                        Save Changes
-                    </Button>
                 </div>
 
                 {message.text && (
@@ -292,6 +312,16 @@ const SettingsView = ({ onProfileUpdate, theme, setTheme }) => {
                                 </FieldDescription>
                             </Field>
                         </FieldGroup>
+                        <div className="mt-6 flex justify-end">
+                            <Button
+                                onClick={handleProfileSave}
+                                disabled={isSavingProfile}
+                                className="gap-2 transition-colors hover:bg-emerald-600 hover:text-white"
+                            >
+                                {isSavingProfile ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
+                                Save Profile
+                            </Button>
+                        </div>
                     </CardContent>
                 </Card>
 
@@ -340,6 +370,50 @@ const SettingsView = ({ onProfileUpdate, theme, setTheme }) => {
                                     </button>
                                 );
                             })}
+                        </div>
+
+                        <FieldGroup className="mt-6">
+                            <Field>
+                                <FieldLabel htmlFor="assistant-name">Assistant Name</FieldLabel>
+                                <div className="flex items-center gap-2">
+                                    <div className="relative flex-1">
+                                        <Bot className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+                                        <Input
+                                            id="assistant-name"
+                                            type="text"
+                                            value={assistantNameDraft}
+                                            onChange={(e) => setAssistantNameDraft(e.target.value)}
+                                            maxLength={50}
+                                            className="pl-9"
+                                            placeholder={defaultAssistantName}
+                                        />
+                                    </div>
+                                    <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={() => setAssistantNameDraft(defaultAssistantName)}
+                                        disabled={assistantNameDraft === defaultAssistantName}
+                                        className="text-muted-foreground hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/20 dark:hover:text-red-400"
+                                    >
+                                        Reset
+                                    </Button>
+                                </div>
+                                <FieldDescription>
+                                    This label is saved on this device when you save this card.
+                                </FieldDescription>
+                            </Field>
+                        </FieldGroup>
+
+                        <div className="mt-6 flex justify-end">
+                            <Button
+                                onClick={handleAppearanceSave}
+                                disabled={isSavingAppearance}
+                                className="gap-2 transition-colors hover:bg-emerald-600 hover:text-white"
+                            >
+                                {isSavingAppearance ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
+                                Save Appearance
+                            </Button>
                         </div>
                     </CardContent>
                 </Card>

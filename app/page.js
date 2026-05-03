@@ -16,6 +16,8 @@ import { useRouter } from 'next/navigation';
 import { Loader2 } from 'lucide-react';
 import { canAccessChat, canAccessDataSources, canAccessRoleDashboard, canViewChatHistory } from '@/lib/roles';
 
+const DEFAULT_ASSISTANT_NAME = 'AI Analyst';
+
 function normalizeGeneratedPayload(value) {
   if (!value || typeof value !== 'object') {
     return {
@@ -58,6 +60,7 @@ function toUiMessage(msg) {
 
 export default function Page() {
   const [theme, setTheme] = useState('system');
+  const [assistantName, setAssistantName] = useState(DEFAULT_ASSISTANT_NAME);
   const [mounted, setMounted] = useState(false);
   const [user, setUser] = useState(null);
   const [profile, setProfile] = useState(null);
@@ -112,6 +115,8 @@ export default function Page() {
     checkUser();
     const savedTheme = localStorage.getItem('theme');
     if (savedTheme) setTheme(savedTheme);
+    const savedAssistantName = localStorage.getItem('assistantName');
+    if (savedAssistantName?.trim()) setAssistantName(savedAssistantName.trim());
   }, [router]);
 
   const [activeTab, setActiveTab] = useState('Chat');
@@ -453,6 +458,7 @@ export default function Page() {
               <ChatArea
                 messages={messages}
                 setMessages={setMessages}
+                assistantLabel={assistantName}
                 onViewHistory={() => canUseHistory && setActiveTab('HistoryList')}
                 activeChatId={activeChatId}
                 onConversationCreated={(id) => {
@@ -489,6 +495,9 @@ export default function Page() {
                 <SettingsView
                   theme={theme}
                   setTheme={setTheme}
+                  assistantName={assistantName}
+                  defaultAssistantName={DEFAULT_ASSISTANT_NAME}
+                  onAssistantNameSave={setAssistantName}
                   onProfileUpdate={(newProfile) => setProfile((currentProfile) => ({ ...currentProfile, ...newProfile }))}
                 />
               </div>

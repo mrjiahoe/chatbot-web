@@ -18,7 +18,17 @@ import ResultVisualization, {
     stripVisualizationTableFromMessage,
 } from './ResultVisualization';
 
-const ChatArea = ({ messages, setMessages, onViewHistory, activeChatId, onConversationCreated, isLoadingChat, currentRole, canViewHistory }) => {
+const ChatArea = ({
+    messages,
+    setMessages,
+    assistantLabel = 'AI Analyst',
+    onViewHistory,
+    activeChatId,
+    onConversationCreated,
+    isLoadingChat,
+    currentRole,
+    canViewHistory,
+}) => {
     const [inputValue, setInputValue] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState(null);
@@ -277,7 +287,7 @@ const ChatArea = ({ messages, setMessages, onViewHistory, activeChatId, onConver
                                     <CardContent className="space-y-2 p-4 md:p-5">
                                         <div className="flex items-center gap-2">
                                             <span className="text-sm font-semibold text-foreground">
-                                                {message.sender === 'user' ? 'You' : 'Assistant'}
+                                                {message.sender === 'user' ? 'You' : assistantLabel}
                                             </span>
                                             <span className="text-xs font-medium text-muted-foreground">
                                                 {message.timestamp}
@@ -381,7 +391,7 @@ const ChatArea = ({ messages, setMessages, onViewHistory, activeChatId, onConver
                                 </div>
                                 <div className="flex-1 pt-1">
                                     <div className="flex items-center gap-2 mb-2">
-                                        <span className="font-semibold text-sm text-zinc-900 dark:text-zinc-100">Assistant</span>
+                                        <span className="font-semibold text-sm text-zinc-900 dark:text-zinc-100">{assistantLabel}</span>
                                     </div>
                                     <div className="flex items-center gap-1.5">
                                         <span className="text-sm text-zinc-600 dark:text-zinc-400">The chat is thinking</span>
