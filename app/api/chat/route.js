@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { fetchCurrentAccessProfile } from '../../../lib/access.js';
+import { isLoopbackBaseUrl, normalizeAiConfig } from '../../../lib/aiConfig.js';
 import { handleStructuredChat } from '../../../lib/controller.js';
 import { generateTitle } from '../../../lib/aiService.js';
 import { getServerSupabaseClient } from '../../../lib/serverSupabase.js';
@@ -41,6 +42,12 @@ const chatSchema = z.object({
         )
         .max(CHAT_MAX_HISTORY_MESSAGES, CHAT_HISTORY_COUNT_TOO_HIGH)
         .optional(),
+    aiConfig: z.object({
+        provider: z.enum(['gemini', 'local']).optional(),
+        geminiModel: z.string().optional(),
+        localBaseUrl: z.string().optional(),
+        localModel: z.string().optional(),
+    }).optional(),
 }).strict();
 
 function firstValidationMessage(zodError) {
@@ -76,7 +83,7 @@ function attachResponseTiming(responsePayload, durationMs) {
     };
 }
 
-async function ensureConversation({ supabase, conversationId, message, userId }) {
+async function ensureConversation({ supabase, conversationId, message, userId, aiConfig }) {
     if (conversationId) {
         const { data, error } = await supabase
             .from('conversations')
@@ -101,7 +108,7 @@ async function ensureConversation({ supabase, conversationId, message, userId })
     let title = message.slice(0, 50);
 
     try {
-        title = await generateTitle(message);
+        title = await generateTitle(message, aiConfig);
     } catch (error) {
         console.error('Error generating conversation title:', error);
     }
@@ -191,7 +198,13 @@ export async function POST(req) {
             );
         }
 
-        const { message, history = [], conversationId, dataContext = '' } = result.data;
+        const { message, history = [], conversationId, dataContext = '', aiConfig: rawAiConfig } = result.data;
+        const aiConfig = normalizeAiConfig(rawAiConfig);
+
+        if (aiConfig.provider === 'local' && !isLoopbackBaseUrl(aiConfig.localBaseUrl)) {
+            throw httpError(400, 'Local LLM mode only supports localhost or loopback API URLs.');
+        }
+
         const supabase = await getServerSupabaseClient();
         const {
             data: { user },
@@ -229,6 +242,7 @@ export async function POST(req) {
             conversationId,
             message,
             userId: user.id,
+            aiConfig,
         });
 
         await persistMessage({
@@ -247,6 +261,7 @@ export async function POST(req) {
             dataContext,
             supabase,
             registrySupabase,
+            aiConfig,
         });
         const timedResponsePayload = attachResponseTiming(
             responsePayload,

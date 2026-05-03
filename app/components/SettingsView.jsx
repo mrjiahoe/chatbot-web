@@ -5,6 +5,9 @@ import {
     AtSign,
     Bell,
     Bot,
+    BrainCircuit,
+    Cloud,
+    Cpu,
     Key,
     Loader2,
     Mail,
@@ -24,8 +27,21 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Field, FieldDescription, FieldGroup, FieldLabel } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
 import { Switch } from '@/components/ui/switch';
+import {
+    AI_CONFIG_STORAGE_KEY,
+    DEFAULT_LOCAL_LLM_BASE_URL,
+    DEFAULT_LOCAL_LLM_MODEL,
+    normalizeAiConfig,
+} from '@/lib/aiConfig';
 
 const themeOptions = [
     {
@@ -53,8 +69,10 @@ const SettingsView = ({
     theme,
     setTheme,
     assistantName,
+    aiConfig,
     defaultAssistantName = 'AI Analyst',
     onAssistantNameSave,
+    onAiConfigSave,
 }) => {
     const [profile, setProfile] = useState({
         username: '',
@@ -84,12 +102,18 @@ const SettingsView = ({
     const [isLoading, setIsLoading] = useState(true);
     const [isSavingProfile, setIsSavingProfile] = useState(false);
     const [isSavingAppearance, setIsSavingAppearance] = useState(false);
+    const [isSavingAiConfig, setIsSavingAiConfig] = useState(false);
     const [message, setMessage] = useState({ type: '', text: '' });
     const [assistantNameDraft, setAssistantNameDraft] = useState(assistantName || defaultAssistantName);
+    const [aiConfigDraft, setAiConfigDraft] = useState(() => normalizeAiConfig(aiConfig));
 
     useEffect(() => {
         setAssistantNameDraft(assistantName || defaultAssistantName);
     }, [assistantName, defaultAssistantName]);
+
+    useEffect(() => {
+        setAiConfigDraft(normalizeAiConfig(aiConfig));
+    }, [aiConfig]);
 
     useEffect(() => {
         const fetchProfile = async () => {
@@ -191,6 +215,21 @@ const SettingsView = ({
         setIsSavingAppearance(false);
     };
 
+    const handleAiConfigSave = async () => {
+        setIsSavingAiConfig(true);
+        setMessage({ type: '', text: '' });
+
+        const normalizedAiConfig = normalizeAiConfig(aiConfigDraft);
+
+        localStorage.setItem(AI_CONFIG_STORAGE_KEY, JSON.stringify(normalizedAiConfig));
+        onAiConfigSave?.(normalizedAiConfig);
+        setAiConfigDraft(normalizedAiConfig);
+        setMessage({ type: 'success', text: 'AI provider updated successfully!' });
+
+        setTimeout(() => setMessage({ type: '', text: '' }), 3000);
+        setIsSavingAiConfig(false);
+    };
+
     if (isLoading) {
         return (
             <div className="flex-1 flex items-center justify-center py-16">
@@ -228,6 +267,7 @@ const SettingsView = ({
                     </div>
                 )}
 
+                {/* AI provider test card start */}
                 <Card>
                     <CardHeader>
                         <CardTitle className="flex items-center gap-2">
@@ -320,6 +360,138 @@ const SettingsView = ({
                             >
                                 {isSavingProfile ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
                                 Save Profile
+                            </Button>
+                        </div>
+                    </CardContent>
+                </Card>
+                {/* AI provider test card end */}
+
+                <Card>
+                    <CardHeader>
+                        <CardTitle className="flex items-center gap-2">
+                            <BrainCircuit className="size-5 text-primary" />
+                            AI Provider
+                        </CardTitle>
+                        <CardDescription>
+                            Switch between Gemini and a localhost-only OpenAI-compatible API such as Ollama or LM Studio.
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-6">
+                        <div className="grid gap-4 md:grid-cols-2">
+                            {[
+                                {
+                                    value: 'gemini',
+                                    title: 'AI API',
+                                    description: 'Use the configured Gemini API key on the server.',
+                                    icon: Cloud,
+                                },
+                                {
+                                    value: 'local',
+                                    title: 'Local LLM',
+                                    description: 'Call a local OpenAI-compatible endpoint running on this machine.',
+                                    icon: Cpu,
+                                },
+                            ].map((option) => {
+                                const Icon = option.icon;
+                                const isActive = aiConfigDraft.provider === option.value;
+
+                                return (
+                                    <button
+                                        key={option.value}
+                                        type="button"
+                                        onClick={() => setAiConfigDraft((current) => ({ ...current, provider: option.value }))}
+                                        className={`flex flex-col items-start rounded-xl border p-4 text-left transition-all ${
+                                            isActive
+                                                ? 'border-primary bg-primary/5 shadow-sm'
+                                                : 'border-border bg-card hover:bg-muted/50'
+                                        }`}
+                                    >
+                                        <div className="mb-4 flex size-11 items-center justify-center rounded-xl bg-muted text-muted-foreground">
+                                            <Icon className="size-5" />
+                                        </div>
+                                        <div className="space-y-1">
+                                            <p className="text-sm font-semibold text-foreground">{option.title}</p>
+                                            <p className="text-sm text-muted-foreground">{option.description}</p>
+                                        </div>
+                                    </button>
+                                );
+                            })}
+                        </div>
+
+                        <FieldGroup className="grid gap-5 md:grid-cols-2">
+                            <Field>
+                                <FieldLabel htmlFor="ai-provider-mode">Provider Mode</FieldLabel>
+                                <Select
+                                    value={aiConfigDraft.provider}
+                                    onValueChange={(value) => setAiConfigDraft((current) => ({ ...current, provider: value }))}
+                                >
+                                    <SelectTrigger id="ai-provider-mode">
+                                        <SelectValue placeholder="Choose an AI provider" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="gemini">Gemini API</SelectItem>
+                                        <SelectItem value="local">Local LLM API</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                                <FieldDescription>
+                                    This preference is stored on this device and sent with each chat request.
+                                </FieldDescription>
+                            </Field>
+
+                            <Field>
+                                <FieldLabel htmlFor="gemini-model">Gemini Model</FieldLabel>
+                                <Input
+                                    id="gemini-model"
+                                    type="text"
+                                    value={aiConfigDraft.geminiModel}
+                                    onChange={(e) => setAiConfigDraft((current) => ({ ...current, geminiModel: e.target.value }))}
+                                    placeholder="gemini-3-flash-preview"
+                                    disabled={aiConfigDraft.provider !== 'gemini'}
+                                />
+                                <FieldDescription>
+                                    Used when the provider is set to Gemini.
+                                </FieldDescription>
+                            </Field>
+
+                            <Field className="md:col-span-2">
+                                <FieldLabel htmlFor="local-base-url">Local API Base URL</FieldLabel>
+                                <Input
+                                    id="local-base-url"
+                                    type="text"
+                                    value={aiConfigDraft.localBaseUrl}
+                                    onChange={(e) => setAiConfigDraft((current) => ({ ...current, localBaseUrl: e.target.value }))}
+                                    placeholder={DEFAULT_LOCAL_LLM_BASE_URL}
+                                    disabled={aiConfigDraft.provider !== 'local'}
+                                />
+                                <FieldDescription>
+                                    Keep this on localhost. Examples: `http://127.0.0.1:11434/v1` for Ollama or `http://127.0.0.1:1234/v1` for LM Studio.
+                                </FieldDescription>
+                            </Field>
+
+                            <Field className="md:col-span-2">
+                                <FieldLabel htmlFor="local-model">Local Model Name</FieldLabel>
+                                <Input
+                                    id="local-model"
+                                    type="text"
+                                    value={aiConfigDraft.localModel}
+                                    onChange={(e) => setAiConfigDraft((current) => ({ ...current, localModel: e.target.value }))}
+                                    placeholder={DEFAULT_LOCAL_LLM_MODEL}
+                                    disabled={aiConfigDraft.provider !== 'local'}
+                                />
+                                <FieldDescription>
+                                    Enter the exact model name exposed by your local server, such as `llama3.2`, `qwen2.5`, or whatever LM Studio has loaded.
+                                </FieldDescription>
+                            </Field>
+                        </FieldGroup>
+
+                        <div className="mt-6 flex justify-end">
+                            <Button
+                                onClick={handleAiConfigSave}
+                                disabled={isSavingAiConfig}
+                                className="gap-2 transition-colors hover:bg-emerald-600 hover:text-white"
+                            >
+                                {isSavingAiConfig ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
+                                Save AI Settings
                             </Button>
                         </div>
                     </CardContent>

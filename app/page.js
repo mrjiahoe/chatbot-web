@@ -1,6 +1,7 @@
 'use client';
 import React, { useEffect, useMemo, useState } from 'react';
 import { fetchCurrentAccessProfile } from '@/lib/access';
+import { AI_CONFIG_STORAGE_KEY, normalizeAiConfig } from '@/lib/aiConfig';
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
 import ChatArea from './components/ChatArea';
@@ -62,6 +63,7 @@ function toUiMessage(msg) {
 export default function Page() {
   const [theme, setTheme] = useState('system');
   const [assistantName, setAssistantName] = useState(DEFAULT_ASSISTANT_NAME);
+  const [aiConfig, setAiConfig] = useState(() => normalizeAiConfig());
   const [mounted, setMounted] = useState(false);
   const [user, setUser] = useState(null);
   const [profile, setProfile] = useState(null);
@@ -118,6 +120,14 @@ export default function Page() {
     if (savedTheme) setTheme(savedTheme);
     const savedAssistantName = localStorage.getItem('assistantName');
     if (savedAssistantName?.trim()) setAssistantName(savedAssistantName.trim());
+    const savedAiConfig = localStorage.getItem(AI_CONFIG_STORAGE_KEY);
+    if (savedAiConfig) {
+      try {
+        setAiConfig(normalizeAiConfig(JSON.parse(savedAiConfig)));
+      } catch (error) {
+        console.warn('Failed to parse saved AI config:', error);
+      }
+    }
   }, [router]);
 
   const [activeTab, setActiveTab] = useState('Chat');
@@ -460,6 +470,7 @@ export default function Page() {
                 messages={messages}
                 setMessages={setMessages}
                 assistantLabel={assistantName}
+                aiConfig={aiConfig}
                 onViewHistory={() => canUseHistory && setActiveTab('HistoryList')}
                 activeChatId={activeChatId}
                 onConversationCreated={(id) => {
@@ -497,8 +508,10 @@ export default function Page() {
                   theme={theme}
                   setTheme={setTheme}
                   assistantName={assistantName}
+                  aiConfig={aiConfig}
                   defaultAssistantName={DEFAULT_ASSISTANT_NAME}
                   onAssistantNameSave={setAssistantName}
+                  onAiConfigSave={setAiConfig}
                   onProfileUpdate={(newProfile) => setProfile((currentProfile) => ({ ...currentProfile, ...newProfile }))}
                 />
               </div>

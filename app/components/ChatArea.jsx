@@ -59,6 +59,7 @@ const ChatArea = ({
     messages,
     setMessages,
     assistantLabel = 'AI Analyst',
+    aiConfig,
     onViewHistory,
     activeChatId,
     onConversationCreated,
@@ -191,7 +192,8 @@ const ChatArea = ({
                     message: userText,
                     history: history,
                     dataContext: dataContext,
-                    conversationId: typeof activeChatId === 'string' ? activeChatId : undefined
+                    conversationId: typeof activeChatId === 'string' ? activeChatId : undefined,
+                    aiConfig,
                 }),
             });
 
