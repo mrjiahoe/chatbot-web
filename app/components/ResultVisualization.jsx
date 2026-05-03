@@ -28,6 +28,14 @@ import {
     ChartTooltip,
     ChartTooltipContent,
 } from '@/components/ui/chart';
+import {
+    Table,
+    TableBody,
+    TableCell,
+    TableHead,
+    TableHeader,
+    TableRow,
+} from '@/components/ui/table';
 
 const CHART_COLORS = [
     'var(--chart-1)',
@@ -64,6 +72,259 @@ function formatValue(value) {
 function formatChartMetric(value, metricLabel = null) {
     const formatted = formatValue(value);
     return metricLabel === 'share_pct' ? `${formatted}%` : formatted;
+}
+
+function titleCase(value) {
+    return String(value ?? '')
+        .split(' ')
+        .filter(Boolean)
+        .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+        .join(' ');
+}
+
+function formatColumnHeading(key) {
+    const normalized = String(key ?? '')
+        .split('.')
+        .pop()
+        ?.replace(/_/g, ' ')
+        .trim();
+
+    if (!normalized) {
+        return 'Value';
+    }
+
+    if (normalized.toLowerCase() === 'name') {
+        return 'Name';
+    }
+
+    if (normalized.toLowerCase().includes('school')) {
+        return 'School Name';
+    }
+
+    return titleCase(normalized);
+}
+
+function getColumnRefLabel(column) {
+    if (!column) {
+        return null;
+    }
+
+    if (typeof column === 'string') {
+        return column;
+    }
+
+    return column.outputLabel || column.column || column.sourceColumn || null;
+}
+
+function getGroupByLabels(request) {
+    if (!request?.group_by) {
+        return [];
+    }
+
+    const groupByValues = Array.isArray(request.group_by)
+        ? request.group_by
+        : [request.group_by];
+
+    return groupByValues
+        .map((column) => getColumnRefLabel(column))
+        .filter(Boolean);
+}
+
+function isGenderLikeCategory(value) {
+    const normalized = String(value ?? '').trim().toLowerCase();
+    return ['male', 'female', 'other', 'unknown', 'unspecified'].includes(normalized);
+}
+
+function isGenderLikeKey(key, categories = []) {
+    const normalizedKey = String(key ?? '').trim().toLowerCase();
+
+    return normalizedKey.endsWith('gender')
+        || normalizedKey.endsWith('sex')
+        || categories.every((category) => isGenderLikeCategory(category));
+}
+
+function normalizeCategoryLabel(value) {
+    if (value == null || value === '') {
+        return 'Unspecified';
+    }
+
+    return String(value);
+}
+
+function orderPivotCategories(categories, categoryKey) {
+    if (!isGenderLikeKey(categoryKey, categories)) {
+        return categories;
+    }
+
+    const ranking = new Map([
+        ['male', 0],
+        ['female', 1],
+        ['other', 2],
+        ['unknown', 3],
+        ['unspecified', 4],
+    ]);
+
+    return [...categories].sort((left, right) => {
+        const leftRank = ranking.get(String(left).toLowerCase()) ?? 99;
+        const rightRank = ranking.get(String(right).toLowerCase()) ?? 99;
+
+        if (leftRank !== rightRank) {
+            return leftRank - rightRank;
+        }
+
+        return String(left).localeCompare(String(right));
+    });
+}
+
+function formatPivotCategoryHeading(category, categoryKey) {
+    const label = titleCase(String(category ?? '').replace(/_/g, ' '));
+
+    return isGenderLikeKey(categoryKey, [category])
+        ? `${label} Teachers`
+        : label;
+}
+
+function buildTableSummary(headers, rows) {
+    if (!headers?.length || !rows?.length) {
+        return [];
+    }
+
+    const numericHeaders = headers.filter((header) => header.numeric);
+    if (!numericHeaders.length) {
+        return [{ label: 'Rows', value: formatValue(rows.length) }];
+    }
+
+    return [
+        { label: 'Rows', value: formatValue(rows.length) },
+        ...numericHeaders.slice(0, 3).map((header) => ({
+            label: header.label,
+            value: formatValue(
+                rows.reduce((sum, row) => sum + (toNumber(row[header.key]) || 0), 0)
+            ),
+        })),
+    ];
+}
+
+function buildPivotTableModel(rows, dimensionKeys, valueKey) {
+    if (dimensionKeys.length !== 2) {
+        return null;
+    }
+
+    const categories = Array.from(
+        new Set(rows.map((row) => normalizeCategoryLabel(row[dimensionKeys[1]])))
+    );
+
+    if (categories.length === 0 || categories.length > 6) {
+        return null;
+    }
+
+    const rowKey = dimensionKeys[0];
+    const categoryKey = dimensionKeys[1];
+    const orderedCategories = orderPivotCategories(categories, categoryKey);
+    const pivotRows = [];
+    const pivotMap = new Map();
+
+    rows.forEach((row) => {
+        const rowLabel = String(row[rowKey] ?? 'N/A');
+        const categoryLabel = normalizeCategoryLabel(row[categoryKey]);
+        const numericValue = toNumber(row[valueKey]) || 0;
+
+        if (!pivotMap.has(rowLabel)) {
+            const nextRow = { [rowKey]: rowLabel, total: 0 };
+            orderedCategories.forEach((category) => {
+                nextRow[category] = 0;
+            });
+            pivotMap.set(rowLabel, nextRow);
+            pivotRows.push(nextRow);
+        }
+
+        const targetRow = pivotMap.get(rowLabel);
+        targetRow[categoryLabel] = (toNumber(targetRow[categoryLabel]) || 0) + numericValue;
+        targetRow.total += numericValue;
+    });
+
+    const headers = [
+        { key: rowKey, label: formatColumnHeading(rowKey), numeric: false },
+        ...orderedCategories.map((category) => ({
+            key: category,
+            label: formatPivotCategoryHeading(category, categoryKey),
+            numeric: true,
+        })),
+        {
+            key: 'total',
+            label: isGenderLikeKey(categoryKey, orderedCategories) ? 'Total Teachers' : 'Total',
+            numeric: true,
+        },
+    ];
+
+    return {
+        kind: 'table',
+        title: 'Query Result',
+        headers,
+        rows: pivotRows,
+        summaryItems: buildTableSummary(headers, pivotRows),
+    };
+}
+
+function buildGenericTableModel(rows, title = 'Query Result') {
+    const headers = Object.keys(rows[0] || {}).map((key) => ({
+        key,
+        label: formatColumnHeading(key),
+        numeric: rows.every((row) => toNumber(row[key]) != null),
+    }));
+
+    return {
+        kind: 'table',
+        title,
+        headers,
+        rows,
+        summaryItems: buildTableSummary(headers, rows),
+    };
+}
+
+function getQueryMetricLabel(request) {
+    if (request?.operation === 'count') {
+        return 'count';
+    }
+
+    const metricColumn = Array.isArray(request?.columns)
+        ? request.columns[0]
+        : request?.columns;
+
+    return getColumnRefLabel(metricColumn) || 'value';
+}
+
+function buildQueryVisualizationModel({ data, request }) {
+    if (!Array.isArray(data.rows) || data.rows.length === 0) {
+        return null;
+    }
+
+    const firstRow = data.rows[0];
+    const rowKeys = Object.keys(firstRow);
+    const groupByLabels = getGroupByLabels(request);
+    const hasValueMetric = Object.prototype.hasOwnProperty.call(firstRow, 'value');
+
+    if (hasValueMetric && groupByLabels.length > 1) {
+        const pivotModel = buildPivotTableModel(data.rows, groupByLabels, 'value');
+
+        if (pivotModel) {
+            return pivotModel;
+        }
+
+        return buildGenericTableModel(data.rows);
+    }
+
+    if (hasValueMetric && rowKeys.length === 2) {
+        const labelKey = getRowLabelKey(firstRow, ['value']);
+        return {
+            kind: 'bars',
+            title: 'Query Result',
+            metricLabel: getQueryMetricLabel(request),
+            bars: normalizeBars(data.rows, labelKey, 'value'),
+        };
+    }
+
+    return buildGenericTableModel(data.rows);
 }
 
 function getRowLabelKey(row, excludeKeys = []) {
@@ -241,19 +502,8 @@ function buildVisualizationModel({ execution, data, request }) {
         }
     }
 
-    if (
-        execution.type === 'query' &&
-        Array.isArray(data.rows) &&
-        data.rows.length > 0 &&
-        Object.prototype.hasOwnProperty.call(data.rows[0], 'value')
-    ) {
-        const labelKey = getRowLabelKey(data.rows[0], ['value']);
-        return {
-            kind: 'bars',
-            title: 'Query Result',
-            metricLabel: 'value',
-            bars: normalizeBars(data.rows, labelKey, 'value'),
-        };
+    if (execution.type === 'query') {
+        return buildQueryVisualizationModel({ data, request });
     }
 
     return null;
@@ -697,6 +947,44 @@ function Histogram({ bins, stats }) {
     );
 }
 
+function ResultTable({ headers, rows, summaryItems }) {
+    return (
+        <div className="space-y-4">
+            <MetricStrip items={summaryItems} />
+            <div className="overflow-hidden rounded-xl border border-border/70 bg-card/70">
+                <Table>
+                    <TableHeader>
+                        <TableRow>
+                            {headers.map((header) => (
+                                <TableHead
+                                    key={header.key}
+                                    className={header.numeric ? 'text-right' : undefined}
+                                >
+                                    {header.label}
+                                </TableHead>
+                            ))}
+                        </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                        {rows.map((row, index) => (
+                            <TableRow key={`${row[headers[0]?.key] ?? 'row'}-${index}`}>
+                                {headers.map((header) => (
+                                    <TableCell
+                                        key={header.key}
+                                        className={header.numeric ? 'text-right font-medium tabular-nums' : undefined}
+                                    >
+                                        {formatValue(row[header.key])}
+                                    </TableCell>
+                                ))}
+                            </TableRow>
+                        ))}
+                    </TableBody>
+                </Table>
+            </div>
+        </div>
+    );
+}
+
 export default function ResultVisualization({ execution, data, request }) {
     const model = buildVisualizationModel({ execution, data, request });
 
@@ -747,6 +1035,18 @@ export default function ResultVisualization({ execution, data, request }) {
         return (
             <Panel title={model.title}>
                 <MetricGrid stats={model.stats} />
+            </Panel>
+        );
+    }
+
+    if (model.kind === 'table') {
+        return (
+            <Panel title={model.title}>
+                <ResultTable
+                    headers={model.headers}
+                    rows={model.rows}
+                    summaryItems={model.summaryItems}
+                />
             </Panel>
         );
     }
