@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { Suspense, useEffect, useState } from 'react';
 import { Moon, Sun } from 'lucide-react';
 import { LoginForm } from '@/components/login-form';
 
@@ -42,7 +42,9 @@ export default function LoginPage() {
                     </div>
                     NaLDAC
                 </a>
-                <LoginForm />
+                <Suspense fallback={<div className="h-[520px] rounded-xl border border-border bg-card" />}>
+                    <LoginForm />
+                </Suspense>
             </div>
         </div>
     );

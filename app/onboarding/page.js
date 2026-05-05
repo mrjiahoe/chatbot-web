@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { Suspense, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { ArrowRight, AtSign, CheckCircle2, Loader2, User } from 'lucide-react';
 import { fetchCurrentAccessProfile } from '@/lib/access';
@@ -11,7 +11,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Field, FieldDescription, FieldGroup, FieldLabel } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 
-export default function OnboardingPage() {
+function OnboardingPageContent() {
     const [username, setUsername] = useState('');
     const [nickname, setNickname] = useState('');
     const [isLoading, setIsLoading] = useState(false);
@@ -233,5 +233,13 @@ export default function OnboardingPage() {
                 </Card>
             </div>
         </div>
+    );
+}
+
+export default function OnboardingPage() {
+    return (
+        <Suspense fallback={<div className="min-h-svh bg-muted/30" />}>
+            <OnboardingPageContent />
+        </Suspense>
     );
 }
