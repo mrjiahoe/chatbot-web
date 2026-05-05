@@ -1,68 +1,255 @@
 # Application Architecture
 
-This document provides a deep dive into how the Data Analytic Chatbot works under the hood.
+This document describes how the current Data Analytic Chatbot is wired together.
 
-## 1. Authentication & Onboarding Flow
-The app uses a strict "Gatekeeper" pattern to ensure every user has a completed profile before they can see the dashboard.
+## 1. Authentication, Bootstrap, and Onboarding
 
-1.  **Login**: User signs in via Email, Username, or Google.
-2.  **Auth Callback**: Supabase handles the OAuth handshake and redirects back to the app.
-3.  **Route Guards**: Middleware redirects unauthenticated users away from protected entry points:
-    -   `/` → `/welcome`
-    -   `/onboarding` requires a valid session
-4.  **Onboarding Check**: In `app/page.js`, the app checks if `profile.onboarding_completed` is `true`.
-    -   If `false`, the user is forced to `/onboarding`.
-    -   If `true`, the user stays on the dashboard.
-5.  **Onboarding Page**: Collects a unique `username` and `nickname`. It uses `upsert` to ensure a profile exists in the database.
+The app uses Supabase Auth for identity and a client bootstrap step in `app/page.js` to decide where the user can go next.
 
-## 2. Role-Based Access Control (RBAC)
-The app can hide data based on who is looking at it.
+1. Login happens through email, username, or Google OAuth.
+2. Middleware protects the main workspace routes and redirects unauthenticated users away from `/`.
+3. After login, the app loads an access profile by combining:
+   - `auth.users`
+   - `public.profiles`
+   - `public.base_account`
+4. If the user has no usable profile yet, they are sent to `/onboarding`.
+5. If `base_account.is_active` is explicitly `false`, the app signs the user out and sends them back to login.
 
-### Roles
--   **Owner**: Total access. Bypasses all filters.
--   **Admin**: Full access. Can manage permissions for others.
--   **User**: Restricted access. Can only see columns explicitly granted to them.
+Onboarding currently captures a unique username and nickname, then saves them through `/api/account/profile`.
 
-### Column Permissions
-Permissions are stored in the `column_permissions` table:
--   `file_id`: Links to a specific file.
--   `role`: The role being targeted (usually 'user').
--   `allowed_columns`: A list of column names allowed for that role.
+## 2. RBAC Model
 
-### The Filter Logic
-When a restricted user previews a file or talks to the AI:
-1.  The app fetches data from `column_permissions` for that `file_id` and the user's `role`.
-2.  **Chat**: The AI is ONLY sent the headers of the `allowed_columns`.
-3.  **Preview**: The UI table ONLY renders columns that are in the `allowed_columns` list.
+RBAC is no longer driven by legacy profile role fields. The effective role is derived from boolean flags on `public.base_account`.
 
-## 3. Data Flow (Upload to AI)
-1.  **Selection**: User selects a CSV or XLSX file.
-2.  **Upload**: The file is stored in Supabase Storage (`data-files` bucket).
-3.  **Reference**: A row is added to `user_files` with the file metadata and storage path.
-4.  **Context**: When a file is "Selected" in chat, the app downloads the first few rows (or headers), filters them based on permissions, and turns them into an allowed schema context for the backend.
+### Role Derivation
 
-## 4. Hybrid Analytics Flow
-The chat endpoint now follows a structured-query pipeline instead of executing model-written SQL.
+`lib/access.js` maps `base_account` flags into the workspace role used by the frontend and API routes:
 
-1.  **Frontend**: `/api/chat` receives the user question, chat history, and schema context.
-2.  **AI Planner** (`lib/aiService.js`): Gemini receives the question plus the allowed schema and returns JSON only.
-3.  **Validation Layer** (`lib/queryBuilder.js`): The backend validates the JSON shape, table names, column names, operators, and operations.
-4.  **Routing Layer** (`lib/controller.js`):
-    -   `type: "query"` goes through a safe query plan.
-    -   `type: "analysis"` fetches raw data first, then sends it to Python.
-5.  **Execution Layer**:
-    -   **Supabase** queries run through the query builder and aggregate safely in Node.js.
-    -   **Azure MySQL** queries use parameterized SQL only.
-    -   **Python** analysis runs in `lib/analysisService.py` with pandas.
-        Supported analysis types are `trend`, `comparison`, `distribution`, `composition`, `outlier`, `correlation`, `period_change`, and `data_quality`.
-        `correlation` can request a `second_column`, while `trend`, `comparison`, `composition`, and `period_change` require `group_by`.
-        `data_quality` may omit `column` to run a table-wide quality check.
-6.  **Formatting** (`lib/resultFormatter.js`): Results are returned as JSON and also converted into a markdown-friendly assistant message for the UI.
+- `is_superuser` -> `super_admin`
+- `is_admin` -> `admin`
+- `is_management`, `is_principal`, or `is_cluster_head` -> `principal`
+- `is_ra` -> `analyst`
+- `is_teacher` or `is_staff` -> `teacher`
+- `is_active = false` -> `inactive`
 
-## 5. Database Schema Map
--   **`auth.users`** (Internal): Managed by Supabase.
--   **`public.profiles`**: Custom user data (Username, Role, Onboarding Status). Linked to `auth.users.id`, which also allows server-side username-to-auth resolution during login.
--   **`public.user_files`**: Metadata for uploaded files (Filename, Storage Path).
--   **`public.conversations`**: Stores chat threads.
--   **`public.messages`**: Stores individual messages within a conversation.
--   **`public.column_permissions`**: Stores which roles can see which columns for each file.
+If no linked `base_account` record exists, the access profile is treated as unlinked and effectively inactive for protected flows.
+
+### Permissions
+
+`lib/roles.js` turns the effective role into capabilities such as:
+
+- access chat
+- view chat history
+- browse data sources
+- preview data
+- attach data context to chat
+- access the user-role dashboard
+- manage role flags
+
+At the moment, only `super_admin` can open and edit the role dashboard.
+
+### Scope Metadata
+
+The app already stores scope metadata in `base_account`, including:
+
+- `school_name_id`
+- `cluster_id`
+
+The admin UI uses these fields when managing teacher and management accounts. In particular, teacher accounts are expected to have exactly one `school_name_id`, and the SQL artifacts include a constraint for that shape.
+
+Important nuance: role metadata already describes school- and cluster-oriented personas, but runtime access enforcement is still primarily role-based. Scope fields are available to the controller and admin workflows, yet they are not uniformly enforced across every preview and analytics execution path today.
+
+## 3. User Role Management Flow
+
+The `/api/admin/users` route powers the role dashboard.
+
+### Read Path
+
+The dashboard reads:
+
+- all Supabase Auth users
+- matching `profiles` rows
+- matching `base_account` rows
+- school names from `base_school`
+
+Those records are merged into a single UI model so super admins can see:
+
+- effective role
+- onboarding status
+- raw access flags
+- school assignment
+- last sign-in metadata
+
+### Write Path
+
+Role changes are written back to `base_account` only.
+
+Supported actions include:
+
+- toggling access flags such as `is_active`, `is_admin`, `is_teacher`, and `is_superuser`
+- assigning or clearing `school_name_id`
+- blocking or unblocking accounts by changing `is_active`
+
+The API rejects invalid updates, such as enabling teacher access without a school assignment.
+
+## 4. Schema Registry and Data Discovery
+
+The workspace exposes approved tables through a schema registry rather than letting the model inspect the whole database.
+
+### Preferred Registry Source
+
+`lib/schemaRegistry.js` first tries Supabase-managed metadata:
+
+- `chatbot_schema_registry`
+- `chatbot_schema_joins`
+
+This is the preferred source because it can be managed centrally.
+
+### Fallback Source
+
+If the registry tables are unavailable or empty, the app falls back to `CHATBOT_ALLOWED_SCHEMA` from the environment.
+
+### Data Center
+
+The Data Sources view reads allowed tables from `/api/schema/tables`.
+
+- `base_account` is intentionally hidden from the browsing surface
+- previews are currently limited to Supabase-backed tables
+- preview results come from `/api/schema/preview`
+
+The current Data Center is a schema browser and preview surface, not a user file upload workflow.
+
+## 5. Chat and Analytics Pipeline
+
+`/api/chat` is the main entry point for the assistant.
+
+1. The route validates the request with Zod.
+2. It checks the authenticated user and loads their access profile.
+3. It blocks chat or data-context usage if the effective role lacks the required permissions.
+4. It ensures a conversation thread exists.
+5. It stores the user message.
+6. It delegates to `lib/controller.js`.
+7. It stores the assistant response and execution metadata when supported.
+
+### Controller Routing
+
+The controller uses the schema registry plus the user message to decide whether to:
+
+- answer as general conversation, or
+- plan a structured analytics request
+
+Structured requests are generated by the AI planner, then validated before execution.
+
+### Safety Model
+
+The app does not execute arbitrary model-written SQL.
+
+Instead, the planner returns JSON and the backend enforces:
+
+- allowed tables
+- allowed columns
+- allowed joins
+- allowed operations
+- bounded limits
+- structured filter shapes
+
+### Supported Operations
+
+Structured query requests currently support:
+
+- `select`
+- `count`
+- `average`
+- `sum`
+
+Structured analysis requests currently support:
+
+- `trend`
+- `comparison`
+- `distribution`
+- `composition`
+- `outlier`
+- `correlation`
+- `period_change`
+- `data_quality`
+
+## 6. Query Execution
+
+After validation, execution is provider-aware:
+
+- Supabase-backed requests are executed through the query builder and Supabase client
+- MySQL-backed requests use parameterized SQL through `mysql2`
+
+The execution layer normalizes output so the rest of the app receives a consistent response shape.
+
+## 7. Analysis Runtime
+
+Analysis requests can run in three modes:
+
+1. Pure JavaScript analysis in `lib/analysisService.js`
+2. Local Python execution through `lib/analysisRunner.js` and `lib/analysisService.py`
+3. Remote analysis service via `ANALYSIS_API_URL`
+
+This lets the same chat flow work in lightweight deployments and heavier analytics environments.
+
+## 8. Conversations and Diagnostics
+
+Conversation history is stored in:
+
+- `public.conversations`
+- `public.messages`
+
+When the `messages` table includes the optional diagnostic columns, the app also persists:
+
+- token usage
+- generated SQL
+- generated structured request payload
+- execution timing
+
+If those columns are missing, the API gracefully falls back to storing plain chat content only.
+
+## 9. Settings Model
+
+The Settings page currently mixes server-backed profile settings with device-local preferences.
+
+### Server-Backed
+
+Saved through `/api/account/profile`:
+
+- username
+- nickname
+- first name
+- last name
+- onboarding completion flag
+
+When the user is linked to `base_account`, username changes also update that table so sign-in stays aligned.
+
+### Device-Local
+
+Saved in `localStorage`:
+
+- theme
+- assistant display name
+- AI provider preference
+- Gemini model label
+- local LLM base URL
+- local LLM model name
+
+The backend validates that local LLM URLs stay on loopback hosts.
+
+## 10. Main Tables and Records
+
+The current app depends most heavily on:
+
+- `auth.users`: Supabase-managed identities
+- `public.profiles`: app profile metadata and onboarding state
+- `public.base_account`: RBAC flags, username, and scope metadata
+- `public.base_school`: school lookup data used by the role dashboard
+- `public.chatbot_schema_registry`: approved table and column metadata
+- `public.chatbot_schema_joins`: approved join metadata
+- `public.conversations`: chat threads
+- `public.messages`: chat messages and optional diagnostics
+
+## 11. Known Documentation Boundary
+
+This document intentionally reflects the code as it exists today. It does not assume future enhancements such as complete row-level scope enforcement, registry management UI, or audit logging until those behaviors are actually implemented.

@@ -25,7 +25,7 @@ const faqs = [
         id: 'upload-data',
         question: 'How do I upload my own data?',
         answer:
-            "Open the Data Sources tab in the sidebar, then use the Upload button to add a CSV, Excel, or JSON file.",
+            'The current Data Sources view exposes approved database tables from the schema registry. Direct file upload is not part of the current workspace flow.',
     },
     {
         id: 'security',
@@ -37,7 +37,7 @@ const faqs = [
         id: 'export-results',
         question: 'Can I export the analysis results?',
         answer:
-            'Yes. Use the export controls on a result to download it as a file or image, depending on the output type.',
+            'Not yet as a built-in workflow. Results stay in chat history for now, and export tooling would need to be added as a future enhancement.',
     },
     {
         id: 'reset-chat',
