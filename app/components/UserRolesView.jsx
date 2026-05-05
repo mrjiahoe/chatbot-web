@@ -928,9 +928,9 @@ const UserRolesView = ({ currentRole }) => {
                         <h1 className="text-3xl font-semibold tracking-tight text-foreground">
                             User Role Management
                         </h1>
-                        <p className="max-w-3xl text-sm text-muted-foreground">
+                        {/* <p className="max-w-3xl text-sm text-muted-foreground">
                             Review users from Supabase Auth and manage RBAC entirely through `base_account` access flags. Teacher accounts are single-school scoped through `school_name_id`.
-                        </p>
+                        </p> */}
                     </div>
 
                     <Button
@@ -971,9 +971,9 @@ const UserRolesView = ({ currentRole }) => {
                                     <ShieldCheck className="size-5 text-primary" />
                                     Team access
                                 </CardTitle>
-                                <CardDescription className="pt-1">
+                                {/* <CardDescription className="pt-1">
                                     Linked users are managed with boolean access flags. Unlinked users stay inactive until they have a `base_account` record, and teachers must have exactly one school assignment.
-                                </CardDescription>
+                                </CardDescription> */}
                             </div>
                             <div className="inline-flex items-center gap-2 rounded-full border border-border bg-background px-3 py-1 text-xs font-medium text-muted-foreground">
                                 <Users className="size-3.5" />

@@ -39,6 +39,8 @@ export async function middleware(request) {
     } = await supabase.auth.getUser();
 
     const pathname = request.nextUrl.pathname;
+    const isOnboardingPreview =
+        pathname === '/onboarding' && request.nextUrl.searchParams.get('preview') === '1';
 
     // If there is no user and the user is trying to access a protected route
     if (!user) {
@@ -49,7 +51,7 @@ export async function middleware(request) {
         }
 
         // Onboarding should never be reachable without a session.
-        if (pathname === '/onboarding') {
+        if (pathname === '/onboarding' && !isOnboardingPreview) {
             const url = request.nextUrl.clone();
             url.pathname = '/welcome';
             return NextResponse.redirect(url);

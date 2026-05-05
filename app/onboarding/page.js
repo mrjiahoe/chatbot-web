@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { ArrowRight, AtSign, CheckCircle2, Loader2, User } from 'lucide-react';
 import { fetchCurrentAccessProfile } from '@/lib/access';
 import { supabase } from '../../lib/supabase';
@@ -19,9 +19,15 @@ export default function OnboardingPage() {
     const [usernameStatus, setUsernameStatus] = useState(null);
     const [error, setError] = useState(null);
     const router = useRouter();
+    const searchParams = useSearchParams();
+    const isPreviewMode = searchParams.get('preview') === '1';
 
     useEffect(() => {
         const checkSession = async () => {
+            if (isPreviewMode) {
+                return;
+            }
+
             try {
                 const { session } = await getSession();
                 const user = session?.user;
@@ -50,7 +56,7 @@ export default function OnboardingPage() {
         };
 
         checkSession();
-    }, [router]);
+    }, [isPreviewMode, router]);
 
     useEffect(() => {
         if (!username || username.length < 3) {
