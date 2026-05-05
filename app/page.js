@@ -10,6 +10,7 @@ import SettingsView from './components/SettingsView';
 import HelpSupportView from './components/HelpSupportView';
 import DataView from './components/DataView';
 import UserRolesView from './components/UserRolesView';
+import SchemaRegistryView from './components/SchemaRegistryView';
 import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar';
 import { supabase } from '../lib/supabase';
 import { getSession, signOut } from '../lib/auth';
@@ -149,6 +150,7 @@ export default function Page() {
     ...(canUseChat ? ['Chat'] : []),
     ...(canUseDataSources ? ['DataCenter'] : []),
     ...(canUseHistory ? ['HistoryList'] : []),
+    ...(hasRoleManagementAccess ? ['SchemaRegistry'] : []),
     ...(hasRoleManagementAccess ? ['UserRoles'] : []),
     'Settings',
     'Help',
@@ -524,6 +526,10 @@ export default function Page() {
             ) : activeTab === 'UserRoles' ? (
               <div className="flex-1 flex flex-col min-h-0 pt-4">
                 <UserRolesView currentRole={currentRole} />
+              </div>
+            ) : activeTab === 'SchemaRegistry' ? (
+              <div className="flex-1 flex flex-col min-h-0 pt-4">
+                <SchemaRegistryView currentRole={currentRole} />
               </div>
             ) : activeTab === 'Help' ? (
               <div className="flex-1 flex flex-col min-h-0 pt-4">

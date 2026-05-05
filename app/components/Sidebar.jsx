@@ -6,6 +6,7 @@ import {
     Database,
     FileText,
     HelpCircle,
+    Link2,
     LogOut,
     MessageSquare,
     Plus,
@@ -43,6 +44,7 @@ const Sidebar = ({ activeTab, setActiveTab, onNewChat, onSelectChat, recentChats
         ...(canUseChat ? [{ icon: MessageSquare, label: 'Chat', id: 'Chat' }] : []),
         ...(canUseDataSources ? [{ icon: Database, label: 'Data Sources', id: 'DataCenter' }] : []),
         ...(canUseHistory ? [{ icon: Clock, label: 'History', id: 'HistoryList' }] : []),
+        ...(hasRoleManagementAccess ? [{ icon: Link2, label: 'Schema', id: 'SchemaRegistry' }] : []),
         ...(hasRoleManagementAccess ? [{ icon: ShieldCheck, label: 'User Roles', id: 'UserRoles' }] : []),
     ];
 
