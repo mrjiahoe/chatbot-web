@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, Loader2, RefreshCcw, Search, ShieldCheck, Users } from 'lucide-react';
+import { AlertTriangle, Loader2, RefreshCcw, Search, ShieldCheck, Trash2, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -25,7 +25,13 @@ import {
 import { Skeleton } from '@/components/ui/skeleton';
 import { Switch } from '@/components/ui/switch';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { canAccessRoleDashboard, canManageUserRoles, formatRoleLabel } from '@/lib/roles';
+import {
+    canAccessRoleDashboard,
+    canDeleteUsers,
+    canManageSuperAdminAssignments,
+    canManageUserRoles,
+    formatRoleLabel,
+} from '@/lib/roles';
 
 function formatDate(value) {
     if (!value) {
@@ -172,6 +178,18 @@ function buildConfirmationConfig({ scope = 'single', actionType, userName, count
         };
     }
 
+    if (actionType === 'delete_user') {
+        return {
+            title: scope === 'bulk' ? `Delete ${targetLabel}?` : 'Delete user?',
+            description:
+                scope === 'bulk'
+                    ? 'This will permanently remove the selected auth accounts, profiles, and saved chat history. Any linked base_account rows will be unlinked and deactivated.'
+                    : `${targetLabel}'s auth account, profile, and saved chat history will be permanently removed. Any linked base_account row will be unlinked and deactivated.`,
+            confirmLabel: scope === 'bulk' ? 'Delete users' : 'Delete user',
+            confirmVariant: 'destructive',
+        };
+    }
+
     return null;
 }
 
@@ -195,6 +213,20 @@ const UserRolesView = ({ currentRole }) => {
     const [pendingConfirmation, setPendingConfirmation] = useState(null);
     const hasAccess = canAccessRoleDashboard(currentRole);
     const canEditRoles = canManageUserRoles(currentRole);
+    const canManageSuperAdmins = canManageSuperAdminAssignments(currentRole);
+    const canRemoveUsers = canDeleteUsers(currentRole);
+    const visibleFlagColumns = useMemo(
+        () =>
+            canManageSuperAdmins
+                ? baseAccountFlagColumns
+                : baseAccountFlagColumns.filter((column) => column.key !== 'is_superuser'),
+        [canManageSuperAdmins]
+    );
+
+    const canManageTargetUser = useCallback(
+        (user) => canManageSuperAdmins || !user?.baseAccountFlags?.is_superuser,
+        [canManageSuperAdmins]
+    );
 
     const sortedUsers = useMemo(
         () => [...users].sort((left, right) => {
@@ -261,13 +293,13 @@ const UserRolesView = ({ currentRole }) => {
     );
 
     const selectedLinkedUsers = useMemo(
-        () => selectedUsers.filter((user) => user.roleSource === 'base_account'),
-        [selectedUsers]
+        () => selectedUsers.filter((user) => user.roleSource === 'base_account' && canManageTargetUser(user)),
+        [canManageTargetUser, selectedUsers]
     );
 
     const selectableFilteredUsers = useMemo(
-        () => filteredUsers.filter((user) => user.roleSource === 'base_account'),
-        [filteredUsers]
+        () => filteredUsers.filter((user) => user.roleSource === 'base_account' && canManageTargetUser(user)),
+        [canManageTargetUser, filteredUsers]
     );
 
     const allVisibleLinkedSelected =
@@ -316,9 +348,17 @@ const UserRolesView = ({ currentRole }) => {
 
     useEffect(() => {
         setSelectedUserIds((currentIds) =>
-            currentIds.filter((id) => users.some((user) => user.id === id))
+            currentIds.filter((id) => users.some((user) => user.id === id && canManageTargetUser(user)))
         );
-    }, [users]);
+    }, [canManageTargetUser, users]);
+
+    useEffect(() => {
+        if (visibleFlagColumns.some((column) => column.key === bulkFlagKey)) {
+            return;
+        }
+
+        setBulkFlagKey(visibleFlagColumns[0]?.key || 'is_active');
+    }, [bulkFlagKey, visibleFlagColumns]);
 
     const patchAdminUser = async ({ userId, baseAccountFlags, schoolNameId, fallbackErrorMessage }) => {
         const response = await fetch('/api/admin/users', {
@@ -339,6 +379,23 @@ const UserRolesView = ({ currentRole }) => {
         }
 
         return payload.user;
+    };
+
+    const deleteAdminUser = async ({ userId, fallbackErrorMessage }) => {
+        const response = await fetch('/api/admin/users', {
+            method: 'DELETE',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ userId }),
+        });
+        const payload = await response.json().catch(() => ({}));
+
+        if (!response.ok) {
+            throw new Error(payload?.error || fallbackErrorMessage);
+        }
+
+        return payload;
     };
 
     const executeBaseAccountFlagChange = async (userId, flagKey, checked) => {
@@ -600,6 +657,14 @@ const UserRolesView = ({ currentRole }) => {
             return;
         }
 
+        if (bulkFlagKey === 'is_superuser' && !canManageSuperAdmins) {
+            setBanner({
+                type: 'error',
+                text: 'Only Super Admins can grant or revoke Super Admin access.',
+            });
+            return;
+        }
+
         if (bulkTeacherNeedsSchool && !bulkSchoolId) {
             setBanner({
                 type: 'error',
@@ -834,6 +899,54 @@ const UserRolesView = ({ currentRole }) => {
         });
     };
 
+    const executeDeleteUser = async (userId) => {
+        const targetUser = users.find((user) => user.id === userId);
+
+        if (!targetUser) {
+            return;
+        }
+
+        setSavingUserId(userId);
+        setBanner({ type: '', text: '' });
+
+        try {
+            await deleteAdminUser({
+                userId,
+                fallbackErrorMessage: 'Unable to delete this user.',
+            });
+
+            setUsers((currentUsers) => currentUsers.filter((user) => user.id !== userId));
+            setSelectedUserIds((currentIds) => currentIds.filter((id) => id !== userId));
+            setBanner({
+                type: 'success',
+                text: `${formatName(targetUser)} has been deleted.`,
+            });
+        } catch (deleteError) {
+            setBanner({
+                type: 'error',
+                text: deleteError.message || 'Unable to delete this user.',
+            });
+        } finally {
+            setSavingUserId(null);
+        }
+    };
+
+    const handleDeleteUser = (user) => {
+        const confirmationConfig = buildConfirmationConfig({
+            scope: 'single',
+            actionType: 'delete_user',
+            userName: formatName(user),
+        });
+
+        setPendingConfirmation({
+            ...confirmationConfig,
+            action: {
+                type: 'single_delete_user',
+                userId: user.id,
+            },
+        });
+    };
+
     const handleBulkClearSchoolScope = () => {
         const eligibleUsers = selectedLinkedUsers.filter(
             (user) => user.schoolScopeId && !user.baseAccountFlags?.is_teacher
@@ -884,6 +997,11 @@ const UserRolesView = ({ currentRole }) => {
 
         if (action.type === 'single_toggle_block') {
             await executeBlockToggle(action.userId, action.shouldBlock);
+            return;
+        }
+
+        if (action.type === 'single_delete_user') {
+            await executeDeleteUser(action.userId);
             return;
         }
 
@@ -959,7 +1077,13 @@ const UserRolesView = ({ currentRole }) => {
 
                 {!canEditRoles ? (
                     <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-900/30 dark:bg-amber-950/20 dark:text-amber-200">
-                        Your current effective role is <span className="font-semibold">{formatRoleLabel(currentRole)}</span>. Only linked <span className="font-semibold">Super Admin</span> accounts can edit access flags.
+                        Your current effective role is <span className="font-semibold">{formatRoleLabel(currentRole)}</span>. Only linked <span className="font-semibold">Admin</span> and <span className="font-semibold">Super Admin</span> accounts can manage users here.
+                    </div>
+                ) : null}
+
+                {canEditRoles ? (
+                    <div className="rounded-lg border border-border bg-background/70 px-4 py-3 text-sm text-muted-foreground">
+                        Admins can manage routine access flags, blocking, and school scope. Super Admins keep schema access, Super Admin promotion, and user deletion.
                     </div>
                 ) : null}
 
@@ -1080,7 +1204,7 @@ const UserRolesView = ({ currentRole }) => {
                                                         <SelectValue placeholder="Choose flag" />
                                                     </SelectTrigger>
                                                     <SelectContent>
-                                                        {baseAccountFlagColumns.map((column) => (
+                                                        {visibleFlagColumns.map((column) => (
                                                             <SelectItem key={column.key} value={column.key}>
                                                                 {column.label}
                                                             </SelectItem>
@@ -1165,19 +1289,20 @@ const UserRolesView = ({ currentRole }) => {
                                         <TableHead>Email</TableHead>
                                         <TableHead>Status</TableHead>
                                         <TableHead>Joined</TableHead>
-                                        {baseAccountFlagColumns.map((column) => (
+                                        {visibleFlagColumns.map((column) => (
                                             <TableHead key={column.key} className="text-center">
                                                 {column.label}
                                             </TableHead>
                                         ))}
                                         <TableHead>School Scope</TableHead>
-                                        <TableHead className="w-[180px]">Access</TableHead>
+                                        <TableHead className="w-[260px]">Access</TableHead>
                                         <TableHead className="w-[220px]">Effective Role</TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
                                     {filteredUsers.map((user) => {
                                         const isSavingRow = savingUserId === user.id;
+                                        const canManageThisUser = canManageTargetUser(user);
 
                                         return (
                                             <TableRow key={user.id}>
@@ -1186,7 +1311,7 @@ const UserRolesView = ({ currentRole }) => {
                                                         type="checkbox"
                                                         checked={selectedUserIds.includes(user.id)}
                                                         onChange={(event) => toggleUserSelection(user.id, event.target.checked)}
-                                                        disabled={!canEditRoles || isBulkSaving || user.roleSource !== 'base_account'}
+                                                        disabled={!canEditRoles || isBulkSaving || user.roleSource !== 'base_account' || !canManageThisUser}
                                                         aria-label={`Select ${formatName(user)}`}
                                                         className="h-4 w-4 rounded border-border align-middle"
                                                     />
@@ -1226,7 +1351,7 @@ const UserRolesView = ({ currentRole }) => {
                                                 <TableCell className="text-sm text-muted-foreground">
                                                     {formatDate(user.createdAt)}
                                                 </TableCell>
-                                                {baseAccountFlagColumns.map((column) => (
+                                                {visibleFlagColumns.map((column) => (
                                                     <TableCell key={column.key} className="text-center">
                                                         {user.roleSource === 'base_account' ? (
                                                             <div className="flex justify-center">
@@ -1235,7 +1360,7 @@ const UserRolesView = ({ currentRole }) => {
                                                                     onCheckedChange={(checked) =>
                                                                         handleBaseAccountFlagChange(user.id, column.key, checked === true)
                                                                     }
-                                                                    disabled={isSavingRow || isBulkSaving || !canEditRoles}
+                                                                    disabled={isSavingRow || isBulkSaving || !canEditRoles || !canManageThisUser}
                                                                     aria-label={`${column.label} access for ${formatName(user)}`}
                                                                 />
                                                             </div>
@@ -1257,6 +1382,7 @@ const UserRolesView = ({ currentRole }) => {
                                                                     isSavingRow ||
                                                                     isBulkSaving ||
                                                                     !canEditRoles ||
+                                                                    !canManageThisUser ||
                                                                     !user.baseAccountFlags?.is_teacher
                                                                 }
                                                             >
@@ -1283,7 +1409,7 @@ const UserRolesView = ({ currentRole }) => {
                                                             <div className="text-xs text-muted-foreground">
                                                                 {user.schoolScopeId || 'school_name_id is null'}
                                                             </div>
-                                                            {user.schoolScopeId && !user.baseAccountFlags?.is_teacher && canEditRoles ? (
+                                                            {user.schoolScopeId && !user.baseAccountFlags?.is_teacher && canEditRoles && canManageThisUser ? (
                                                                 <Button
                                                                     type="button"
                                                                     variant="ghost"
@@ -1302,7 +1428,24 @@ const UserRolesView = ({ currentRole }) => {
                                                             ) : null}
                                                         </div>
                                                     ) : (
-                                                        <span className="text-xs text-muted-foreground">-</span>
+                                                        <div className="space-y-2">
+                                                            <div className="text-xs text-muted-foreground">
+                                                                Link this user to <code>base_account</code> to manage access flags.
+                                                            </div>
+                                                            {canRemoveUsers ? (
+                                                                <Button
+                                                                    type="button"
+                                                                    variant="outline"
+                                                                    size="sm"
+                                                                    className="gap-1.5 text-red-600 hover:text-red-600"
+                                                                    onClick={() => handleDeleteUser(user)}
+                                                                    disabled={isSavingRow || isBulkSaving || user.isCurrentUser}
+                                                                >
+                                                                    <Trash2 className="size-3.5" />
+                                                                    Delete
+                                                                </Button>
+                                                            ) : null}
+                                                        </div>
                                                     )}
                                                 </TableCell>
                                                 <TableCell>
@@ -1323,14 +1466,34 @@ const UserRolesView = ({ currentRole }) => {
                                                                     variant={user.baseAccountFlags?.is_active === false ? 'outline' : 'destructive'}
                                                                     size="sm"
                                                                     onClick={() => handleBlockToggle(user)}
-                                                                    disabled={isSavingRow || isBulkSaving || !canEditRoles || user.isCurrentUser}
+                                                                    disabled={isSavingRow || isBulkSaving || !canEditRoles || !canManageThisUser || user.isCurrentUser}
                                                                 >
                                                                     {user.baseAccountFlags?.is_active === false ? 'Unblock' : 'Block'}
                                                                 </Button>
                                                             </div>
+                                                            {canRemoveUsers ? (
+                                                                <div>
+                                                                    <Button
+                                                                        type="button"
+                                                                        variant="outline"
+                                                                        size="sm"
+                                                                        className="gap-1.5 text-red-600 hover:text-red-600"
+                                                                        onClick={() => handleDeleteUser(user)}
+                                                                        disabled={isSavingRow || isBulkSaving || !canManageThisUser || user.isCurrentUser}
+                                                                    >
+                                                                        <Trash2 className="size-3.5" />
+                                                                        Delete
+                                                                    </Button>
+                                                                </div>
+                                                            ) : null}
                                                             {user.isCurrentUser ? (
                                                                 <div className="text-xs text-muted-foreground">
-                                                                    You cannot block yourself.
+                                                                    You cannot block or delete yourself.
+                                                                </div>
+                                                            ) : null}
+                                                            {!canManageThisUser ? (
+                                                                <div className="text-xs text-muted-foreground">
+                                                                    Super Admin access requires a Super Admin to manage.
                                                                 </div>
                                                             ) : null}
                                                         </div>

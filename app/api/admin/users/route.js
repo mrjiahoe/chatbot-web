@@ -8,7 +8,13 @@ import {
 } from '@/lib/access';
 import { getSupabaseAdminClient } from '@/lib/supabase-admin';
 import { getServerSupabaseClient } from '@/lib/serverSupabase';
-import { canAccessRoleDashboard, canManageUserRoles, normalizeRole } from '@/lib/roles';
+import {
+    canAccessRoleDashboard,
+    canDeleteUsers,
+    canManageSuperAdminAssignments,
+    canManageUserRoles,
+    normalizeRole,
+} from '@/lib/roles';
 
 async function requireRoleAccess() {
     const supabase = await getServerSupabaseClient();
@@ -82,6 +88,45 @@ async function fetchSchoolMap(admin) {
     }
 
     return new Map((data || []).map((school) => [school.id, school.name]));
+}
+
+async function listLinkedSuperAdminIds(admin) {
+    const { data, error } = await admin
+        .from('base_account')
+        .select('auth_user_id')
+        .eq('is_superuser', true);
+
+    if (error) {
+        throw error;
+    }
+
+    return (data || [])
+        .map((row) => row.auth_user_id)
+        .filter(Boolean);
+}
+
+function isLinkedSuperAdmin(baseAccount) {
+    return Boolean(baseAccount?.is_superuser && baseAccount?.auth_user_id);
+}
+
+function canManageTargetUser({ actorRole, targetBaseAccount }) {
+    if (canManageSuperAdminAssignments(actorRole)) {
+        return true;
+    }
+
+    return !isLinkedSuperAdmin(targetBaseAccount);
+}
+
+async function assertNotLastLinkedSuperAdmin({ admin, userId, baseAccount, actionLabel }) {
+    if (!isLinkedSuperAdmin(baseAccount)) {
+        return;
+    }
+
+    const linkedSuperAdminIds = await listLinkedSuperAdminIds(admin);
+
+    if (linkedSuperAdminIds.includes(userId) && linkedSuperAdminIds.length <= 1) {
+        throw new Error(`You cannot ${actionLabel} the last linked Super Admin.`);
+    }
 }
 
 export async function GET() {
@@ -199,6 +244,13 @@ export async function PATCH(request) {
         const hasFlagPayload = requestedBaseAccountFlags && typeof requestedBaseAccountFlags === 'object';
         const hasSchoolPayload = requestedSchoolNameId !== undefined;
 
+        if (!canManageTargetUser({ actorRole, targetBaseAccount: baseAccount })) {
+            return NextResponse.json(
+                { error: 'Only Super Admins can manage another Super Admin account.' },
+                { status: 403 }
+            );
+        }
+
         if (hasFlagPayload || hasSchoolPayload) {
             if (!baseAccount) {
                 return NextResponse.json(
@@ -224,6 +276,17 @@ export async function PATCH(request) {
                 return NextResponse.json(
                     { error: 'Invalid base_account flag selected.' },
                     { status: 400 }
+                );
+            }
+
+            if (
+                hasFlagPayload &&
+                Object.prototype.hasOwnProperty.call(requestedBaseAccountFlags, 'is_superuser') &&
+                !canManageSuperAdminAssignments(actorRole)
+            ) {
+                return NextResponse.json(
+                    { error: 'Only Super Admins can grant or revoke Super Admin access.' },
+                    { status: 403 }
                 );
             }
 
@@ -260,6 +323,26 @@ export async function PATCH(request) {
                     },
                     { status: 400 }
                 );
+            }
+
+            const superAdminWillBeDisabled =
+                isLinkedSuperAdmin(baseAccount) &&
+                (mergedFlags.is_superuser === false || mergedFlags.is_active === false);
+
+            if (superAdminWillBeDisabled) {
+                try {
+                    await assertNotLastLinkedSuperAdmin({
+                        admin,
+                        userId,
+                        baseAccount,
+                        actionLabel: mergedFlags.is_active === false ? 'block' : 'demote',
+                    });
+                } catch (guardError) {
+                    return NextResponse.json(
+                        { error: guardError instanceof Error ? guardError.message : 'Update blocked.' },
+                        { status: 400 }
+                    );
+                }
             }
 
             const { data: updatedBaseAccount, error } = await admin
@@ -302,6 +385,138 @@ export async function PATCH(request) {
         return NextResponse.json(
             {
                 error: error instanceof Error ? error.message : 'Unable to update role.',
+            },
+            { status: 500 }
+        );
+    }
+}
+
+export async function DELETE(request) {
+    try {
+        const access = await requireRoleAccess();
+
+        if (access.error) {
+            return access.error;
+        }
+
+        const { admin, actorRole, currentUserId } = access;
+
+        if (!canDeleteUsers(actorRole)) {
+            return NextResponse.json({ error: 'Forbidden.' }, { status: 403 });
+        }
+
+        const body = await request.json().catch(() => ({}));
+        const userId = body?.userId;
+
+        if (!userId) {
+            return NextResponse.json(
+                { error: 'User ID is required.' },
+                { status: 400 }
+            );
+        }
+
+        if (userId === currentUserId) {
+            return NextResponse.json(
+                { error: 'You cannot delete your own account.' },
+                { status: 400 }
+            );
+        }
+
+        const baseAccountsByAuthUserId = await fetchBaseAccountsByAuthUserIds({
+            supabase: admin,
+            authUserIds: [userId],
+        });
+        const baseAccount = baseAccountsByAuthUserId.get(userId) || null;
+
+        if (!canManageTargetUser({ actorRole, targetBaseAccount: baseAccount })) {
+            return NextResponse.json(
+                { error: 'Only Super Admins can delete another Super Admin account.' },
+                { status: 403 }
+            );
+        }
+
+        try {
+            await assertNotLastLinkedSuperAdmin({
+                admin,
+                userId,
+                baseAccount,
+                actionLabel: 'delete',
+            });
+        } catch (guardError) {
+            return NextResponse.json(
+                { error: guardError instanceof Error ? guardError.message : 'Delete blocked.' },
+                { status: 400 }
+            );
+        }
+
+        const { data: conversations, error: conversationsError } = await admin
+            .from('conversations')
+            .select('id')
+            .eq('user_id', userId);
+
+        if (conversationsError) {
+            throw conversationsError;
+        }
+
+        const conversationIds = (conversations || []).map((conversation) => conversation.id).filter(Boolean);
+
+        if (conversationIds.length) {
+            const { error: messagesError } = await admin
+                .from('messages')
+                .delete()
+                .in('conversation_id', conversationIds);
+
+            if (messagesError) {
+                throw messagesError;
+            }
+        }
+
+        const { error: deleteConversationsError } = await admin
+            .from('conversations')
+            .delete()
+            .eq('user_id', userId);
+
+        if (deleteConversationsError) {
+            throw deleteConversationsError;
+        }
+
+        const { error: deleteProfileError } = await admin
+            .from('profiles')
+            .delete()
+            .eq('id', userId);
+
+        if (deleteProfileError) {
+            throw deleteProfileError;
+        }
+
+        if (baseAccount) {
+            const { error: unlinkBaseAccountError } = await admin
+                .from('base_account')
+                .update({
+                    auth_user_id: null,
+                    is_active: false,
+                })
+                .eq('auth_user_id', userId);
+
+            if (unlinkBaseAccountError) {
+                throw unlinkBaseAccountError;
+            }
+        }
+
+        const { error: deleteAuthUserError } = await admin.auth.admin.deleteUser(userId);
+
+        if (deleteAuthUserError) {
+            throw deleteAuthUserError;
+        }
+
+        return NextResponse.json({
+            deletedUserId: userId,
+            unlinkedBaseAccountId: baseAccount?.id || null,
+        });
+    } catch (error) {
+        return NextResponse.json(
+            {
+                error: error instanceof Error ? error.message : 'Unable to delete user.',
             },
             { status: 500 }
         );

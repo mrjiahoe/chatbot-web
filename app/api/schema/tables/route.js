@@ -4,12 +4,20 @@ import { getServerSupabaseClient } from '@/lib/serverSupabase';
 
 const HIDDEN_DATA_SOURCE_TABLES = new Set(['base_account']);
 
+function isVisibleInDataSources(row) {
+    if (row?.show_in_data_sources === null || row?.show_in_data_sources === undefined) {
+        return !HIDDEN_DATA_SOURCE_TABLES.has(row?.table_name || row?.name);
+    }
+
+    return Boolean(row.show_in_data_sources);
+}
+
 export async function GET() {
     try {
         const supabase = await getServerSupabaseClient();
         const { data: registryRows, error: registryError } = await supabase
             .from('chatbot_schema_registry')
-            .select('table_name, provider, source, column_name, column_type, enabled')
+            .select('*')
             .eq('enabled', true)
             .order('table_name', { ascending: true })
             .order('column_name', { ascending: true });
@@ -23,6 +31,7 @@ export async function GET() {
                         name: row.table_name,
                         provider: row.provider || 'supabase',
                         source: row.source || row.table_name,
+                        showInDataSources: isVisibleInDataSources(row),
                         columns: [],
                     });
                 }
@@ -34,7 +43,7 @@ export async function GET() {
             });
 
             const tables = Array.from(groupedTables.values())
-                .filter((table) => !HIDDEN_DATA_SOURCE_TABLES.has(table.name))
+                .filter((table) => table.showInDataSources !== false)
                 .sort((left, right) => left.name.localeCompare(right.name));
 
             return NextResponse.json({ tables });

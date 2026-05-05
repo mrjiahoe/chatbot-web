@@ -24,7 +24,7 @@ import {
 import { Skeleton } from '@/components/ui/skeleton';
 import { Switch } from '@/components/ui/switch';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { canAccessRoleDashboard } from '@/lib/roles';
+import { canAccessSchemaRegistry } from '@/lib/roles';
 
 const COLUMN_TYPE_OPTIONS = ['string', 'number', 'boolean', 'date', 'unknown'];
 const PROVIDER_OPTIONS = ['supabase', 'mysql'];
@@ -43,7 +43,7 @@ function createEmptyColumnDraft() {
 }
 
 const SchemaRegistryView = ({ currentRole }) => {
-    const hasAccess = canAccessRoleDashboard(currentRole);
+    const hasAccess = canAccessSchemaRegistry(currentRole);
     const [tables, setTables] = useState([]);
     const [joins, setJoins] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
@@ -51,6 +51,10 @@ const SchemaRegistryView = ({ currentRole }) => {
     const [savingKey, setSavingKey] = useState('');
     const [error, setError] = useState('');
     const [banner, setBanner] = useState({ type: '', text: '' });
+    const [discoveredTables, setDiscoveredTables] = useState([]);
+    const [discoveredJoins, setDiscoveredJoins] = useState([]);
+    const [selectedDiscoveryTables, setSelectedDiscoveryTables] = useState({});
+    const [isDiscovering, setIsDiscovering] = useState(false);
     const [newTableDraft, setNewTableDraft] = useState({
         tableName: '',
         provider: 'supabase',
@@ -155,6 +159,13 @@ const SchemaRegistryView = ({ currentRole }) => {
         [newJoinDraft.targetTable, tables]
     );
 
+    const selectedDiscoveryTableNames = useMemo(
+        () => Object.entries(selectedDiscoveryTables)
+            .filter(([, checked]) => checked === true)
+            .map(([tableName]) => tableName),
+        [selectedDiscoveryTables]
+    );
+
     const runMutation = async ({ url, method, body, successMessage, savingToken }) => {
         setSavingKey(savingToken);
         setBanner({ type: '', text: '' });
@@ -187,6 +198,81 @@ const SchemaRegistryView = ({ currentRole }) => {
             return false;
         } finally {
             setSavingKey('');
+        }
+    };
+
+    const handleDiscoverSchema = async () => {
+        setIsDiscovering(true);
+        setBanner({ type: '', text: '' });
+
+        try {
+            const response = await fetch('/api/admin/schema-registry?mode=discover', {
+                cache: 'no-store',
+            });
+            const payload = await response.json().catch(() => ({}));
+
+            if (!response.ok) {
+                throw new Error(payload?.error || 'Unable to scan Supabase schema.');
+            }
+
+            setDiscoveredTables(payload.tables || []);
+            setDiscoveredJoins(payload.joins || []);
+            setSelectedDiscoveryTables(
+                (payload.tables || []).reduce((accumulator, table) => {
+                    accumulator[table.name] = !table.alreadyImported;
+                    return accumulator;
+                }, {})
+            );
+            setBanner({
+                type: 'success',
+                text: `Scanned ${payload.tables?.length || 0} tables from the Supabase REST schema.`,
+            });
+        } catch (discoveryError) {
+            setBanner({
+                type: 'error',
+                text: discoveryError instanceof Error ? discoveryError.message : 'Unable to scan Supabase schema.',
+            });
+        } finally {
+            setIsDiscovering(false);
+        }
+    };
+
+    const handleImportDiscoveredTables = async () => {
+        if (!selectedDiscoveryTableNames.length) {
+            setBanner({
+                type: 'error',
+                text: 'Select at least one discovered table to import.',
+            });
+            return;
+        }
+
+        const ok = await runMutation({
+            url: '/api/admin/schema-registry',
+            method: 'POST',
+            body: {
+                entryType: 'import_discovery',
+                tableNames: selectedDiscoveryTableNames,
+            },
+            successMessage: `Imported ${selectedDiscoveryTableNames.length} discovered table${selectedDiscoveryTableNames.length === 1 ? '' : 's'} into the schema registry.`,
+            savingToken: 'discover-import',
+        });
+
+        if (ok) {
+            setDiscoveredTables((currentTables) =>
+                currentTables.map((table) => (
+                    selectedDiscoveryTableNames.includes(table.name)
+                        ? { ...table, alreadyImported: true }
+                        : table
+                ))
+            );
+            setSelectedDiscoveryTables((currentSelections) =>
+                Object.fromEntries(
+                    Object.entries(currentSelections).map(([tableName, checked]) => [
+                        tableName,
+                        selectedDiscoveryTableNames.includes(tableName) ? false : checked,
+                    ])
+                )
+            );
         }
     };
 
@@ -262,6 +348,20 @@ const SchemaRegistryView = ({ currentRole }) => {
             },
             successMessage: `${enabled ? 'Enabled' : 'Disabled'} ${tableName} for the approved schema.`,
             savingToken: `table-enabled:${tableName}`,
+        });
+    };
+
+    const handleToggleDataSourceVisibility = async (tableName, showInDataSources) => {
+        await runMutation({
+            url: '/api/admin/schema-registry',
+            method: 'PATCH',
+            body: {
+                entryType: 'table',
+                tableName,
+                showInDataSources,
+            },
+            successMessage: `${showInDataSources ? 'Showed' : 'Hid'} ${tableName} in the Data Sources tab.`,
+            savingToken: `table-data-sources:${tableName}`,
         });
     };
 
@@ -487,6 +587,108 @@ const SchemaRegistryView = ({ currentRole }) => {
                 <Card>
                     <CardHeader className="border-b border-border bg-muted/20">
                         <CardTitle className="flex items-center gap-2">
+                            <RefreshCcw className="size-5 text-primary" />
+                            Discover From Supabase
+                        </CardTitle>
+                        <CardDescription>
+                            Scan the Supabase REST OpenAPI schema to find public tables and columns automatically, then import the ones you want into the registry.
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4 p-4 md:p-6">
+                        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                            <p className="max-w-3xl text-sm text-muted-foreground">
+                                This scan reflects the REST-exposed public schema, not private Postgres schemas. Foreign-key hints are imported as suggested joins when both related tables are selected.
+                            </p>
+                            <div className="flex items-center gap-2">
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    className="gap-2"
+                                    onClick={handleDiscoverSchema}
+                                    disabled={isDiscovering}
+                                >
+                                    {isDiscovering ? <Loader2 className="size-4 animate-spin" /> : <RefreshCcw className="size-4" />}
+                                    Scan Supabase
+                                </Button>
+                                <Button
+                                    type="button"
+                                    className="gap-2"
+                                    onClick={handleImportDiscoveredTables}
+                                    disabled={savingKey === 'discover-import' || selectedDiscoveryTableNames.length === 0}
+                                >
+                                    {savingKey === 'discover-import' ? <Loader2 className="size-4 animate-spin" /> : <Plus className="size-4" />}
+                                    Import selected
+                                </Button>
+                            </div>
+                        </div>
+
+                        {discoveredTables.length ? (
+                            <div className="overflow-hidden rounded-xl border border-border">
+                                <Table>
+                                    <TableHeader>
+                                        <TableRow>
+                                            <TableHead className="w-[80px]">Import</TableHead>
+                                            <TableHead>Table</TableHead>
+                                            <TableHead>Columns</TableHead>
+                                            <TableHead>Detected joins</TableHead>
+                                            <TableHead>Status</TableHead>
+                                        </TableRow>
+                                    </TableHeader>
+                                    <TableBody>
+                                        {discoveredTables.map((table) => {
+                                            const joinCount = discoveredJoins.filter(
+                                                (join) => join.sourceTable === table.name || join.targetTable === table.name
+                                            ).length;
+
+                                            return (
+                                                <TableRow key={table.name}>
+                                                    <TableCell>
+                                                        <Switch
+                                                            checked={Boolean(selectedDiscoveryTables[table.name])}
+                                                            onCheckedChange={(checked) =>
+                                                                setSelectedDiscoveryTables((current) => ({
+                                                                    ...current,
+                                                                    [table.name]: checked === true,
+                                                                }))
+                                                            }
+                                                            disabled={table.alreadyImported || savingKey === 'discover-import'}
+                                                            aria-label={`Select ${table.name} for import`}
+                                                        />
+                                                    </TableCell>
+                                                    <TableCell>
+                                                        <div className="font-medium text-foreground">{table.name}</div>
+                                                        <div className="text-xs text-muted-foreground">{table.source}</div>
+                                                    </TableCell>
+                                                    <TableCell className="text-sm text-muted-foreground">
+                                                        {table.columns.length}
+                                                    </TableCell>
+                                                    <TableCell className="text-sm text-muted-foreground">
+                                                        {joinCount}
+                                                    </TableCell>
+                                                    <TableCell>
+                                                        {table.alreadyImported ? (
+                                                            <span className="inline-flex items-center rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-medium text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">
+                                                                Already imported
+                                                            </span>
+                                                        ) : (
+                                                            <span className="inline-flex items-center rounded-full bg-zinc-200 px-2.5 py-1 text-xs font-medium text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300">
+                                                                New
+                                                            </span>
+                                                        )}
+                                                    </TableCell>
+                                                </TableRow>
+                                            );
+                                        })}
+                                    </TableBody>
+                                </Table>
+                            </div>
+                        ) : null}
+                    </CardContent>
+                </Card>
+
+                <Card>
+                    <CardHeader className="border-b border-border bg-muted/20">
+                        <CardTitle className="flex items-center gap-2">
                             <Plus className="size-5 text-primary" />
                             Add Table Entry
                         </CardTitle>
@@ -619,6 +821,15 @@ const SchemaRegistryView = ({ currentRole }) => {
                                             </div>
 
                                             <div className="flex items-center gap-3">
+                                                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                                    <span>Show in Data Sources</span>
+                                                    <Switch
+                                                        checked={table.showInDataSources !== false}
+                                                        onCheckedChange={(checked) => handleToggleDataSourceVisibility(table.name, checked === true)}
+                                                        disabled={Boolean(savingKey)}
+                                                        aria-label={`Show ${table.name} in Data Sources`}
+                                                    />
+                                                </div>
                                                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
                                                     <span>Enable table</span>
                                                     <Switch

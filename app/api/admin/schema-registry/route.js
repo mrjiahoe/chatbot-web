@@ -2,8 +2,9 @@ import { NextResponse } from 'next/server';
 import { clearSchemaCache } from '@/lib/schemaRegistry';
 import { fetchCurrentAccessProfile } from '@/lib/access';
 import { getSupabaseAdminClient } from '@/lib/supabase-admin';
+import { getSupabaseEnv } from '@/lib/supabase-env';
 import { getServerSupabaseClient } from '@/lib/serverSupabase';
-import { canAccessRoleDashboard, normalizeRole } from '@/lib/roles';
+import { canAccessSchemaRegistry, normalizeRole } from '@/lib/roles';
 
 function trimOrNull(value) {
     if (value === null || value === undefined) {
@@ -16,6 +17,144 @@ function trimOrNull(value) {
 
 function trimOrEmpty(value) {
     return String(value || '').trim();
+}
+
+function isMissingVisibilityColumnError(error) {
+    const message = String(error?.message || '').toLowerCase();
+
+    return (
+        error?.code === '42703' ||
+        message.includes('show_in_data_sources')
+    );
+}
+
+const HIDDEN_DISCOVERY_TABLES = new Set([
+    'chatbot_schema_registry',
+    'chatbot_schema_joins',
+]);
+
+const HIDDEN_DATA_SOURCE_TABLES = new Set([
+    'base_account',
+]);
+
+function toRegistryColumnType(property = {}) {
+    const format = String(property?.format || '').toLowerCase();
+    const type = String(property?.type || '').toLowerCase();
+
+    if (format === 'date' || format.includes('timestamp')) {
+        return 'date';
+    }
+
+    if (type === 'boolean') {
+        return 'boolean';
+    }
+
+    if (['integer', 'number'].includes(type)) {
+        return 'number';
+    }
+
+    if (['int2', 'int4', 'int8', 'float4', 'float8', 'numeric', 'decimal', 'double precision'].includes(format)) {
+        return 'number';
+    }
+
+    if (type === 'string') {
+        return 'string';
+    }
+
+    return 'unknown';
+}
+
+function extractForeignKey(description) {
+    const match = String(description || '').match(/<fk table='([^']+)' column='([^']+)'\/>/i);
+
+    if (!match) {
+        return null;
+    }
+
+    return {
+        targetTable: match[1],
+        targetColumn: match[2],
+    };
+}
+
+async function fetchSupabaseOpenApiDocument() {
+    const { supabaseUrl } = getSupabaseEnv();
+    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+    if (!serviceRoleKey) {
+        throw new Error('Missing SUPABASE_SERVICE_ROLE_KEY. Automatic discovery requires the service role key.');
+    }
+
+    const response = await fetch(`${supabaseUrl}/rest/v1/`, {
+        headers: {
+            apikey: serviceRoleKey,
+            Authorization: `Bearer ${serviceRoleKey}`,
+            Accept: 'application/openapi+json',
+        },
+        cache: 'no-store',
+    });
+
+    if (!response.ok) {
+        throw new Error(`Supabase OpenAPI discovery failed with ${response.status}.`);
+    }
+
+    return response.json();
+}
+
+function parseDiscoveredSchema(openApiDocument) {
+    const definitions = openApiDocument?.definitions || {};
+    const discoveredTables = [];
+    const joins = new Map();
+
+    Object.entries(definitions).forEach(([tableName, definition]) => {
+        if (HIDDEN_DISCOVERY_TABLES.has(tableName)) {
+            return;
+        }
+
+        const properties = definition?.properties || {};
+        const columns = Object.entries(properties).map(([columnName, property]) => {
+            const foreignKey = extractForeignKey(property?.description);
+
+            if (foreignKey) {
+                const joinKey = `${tableName}:${foreignKey.targetTable}:${columnName}:${foreignKey.targetColumn}`;
+                joins.set(joinKey, {
+                    sourceTable: tableName,
+                    targetTable: foreignKey.targetTable,
+                    sourceColumn: columnName,
+                    targetColumn: foreignKey.targetColumn,
+                    joinType: 'left',
+                    enabled: true,
+                });
+            }
+
+            return {
+                name: columnName,
+                type: toRegistryColumnType(property),
+                enabled: true,
+                isScopeKey: ['school_id', 'school_name_id', 'cluster_id'].includes(columnName),
+            };
+        });
+
+        if (!columns.length) {
+            return;
+        }
+
+        discoveredTables.push({
+            name: tableName,
+            provider: 'supabase',
+            source: tableName,
+            columns: columns.sort((left, right) => left.name.localeCompare(right.name)),
+        });
+    });
+
+    return {
+        tables: discoveredTables.sort((left, right) => left.name.localeCompare(right.name)),
+        joins: Array.from(joins.values()).sort((left, right) => {
+            const leftKey = `${left.sourceTable}:${left.targetTable}:${left.sourceColumn}:${left.targetColumn}`;
+            const rightKey = `${right.sourceTable}:${right.targetTable}:${right.sourceColumn}:${right.targetColumn}`;
+            return leftKey.localeCompare(rightKey);
+        }),
+    };
 }
 
 async function requireSchemaRegistryAccess() {
@@ -37,7 +176,7 @@ async function requireSchemaRegistryAccess() {
     });
     const actorRole = normalizeRole(accessProfile.effectiveRole);
 
-    if (!canAccessRoleDashboard(actorRole)) {
+    if (!canAccessSchemaRegistry(actorRole)) {
         return {
             error: NextResponse.json({ error: 'Forbidden.' }, { status: 403 }),
         };
@@ -57,6 +196,10 @@ function groupRegistryRows(rows = []) {
                 name: row.table_name,
                 provider: row.provider || 'supabase',
                 source: row.source || row.table_name,
+                showInDataSources:
+                    row.show_in_data_sources === null || row.show_in_data_sources === undefined
+                        ? !HIDDEN_DATA_SOURCE_TABLES.has(row.table_name)
+                        : Boolean(row.show_in_data_sources),
                 totalColumns: 0,
                 enabledColumns: 0,
                 isEnabled: false,
@@ -88,7 +231,7 @@ async function loadRegistry(admin) {
     const [registryResponse, joinsResponse] = await Promise.all([
         admin
             .from('chatbot_schema_registry')
-            .select('id, table_name, provider, source, column_name, column_type, enabled')
+            .select('*')
             .order('table_name', { ascending: true })
             .order('column_name', { ascending: true }),
         admin
@@ -122,12 +265,31 @@ async function loadRegistry(admin) {
     };
 }
 
-export async function GET() {
+export async function GET(request) {
     try {
         const access = await requireSchemaRegistryAccess();
 
         if (access.error) {
             return access.error;
+        }
+
+        const url = new URL(request.url);
+        const mode = trimOrEmpty(url.searchParams.get('mode'));
+
+        if (mode === 'discover') {
+            const [discovered, currentRegistry] = await Promise.all([
+                fetchSupabaseOpenApiDocument().then(parseDiscoveredSchema),
+                loadRegistry(access.admin),
+            ]);
+            const importedTableNames = new Set(currentRegistry.tables.map((table) => table.name));
+
+            return NextResponse.json({
+                tables: discovered.tables.map((table) => ({
+                    ...table,
+                    alreadyImported: importedTableNames.has(table.name),
+                })),
+                joins: discovered.joins,
+            });
         }
 
         const payload = await loadRegistry(access.admin);
@@ -156,7 +318,87 @@ export async function POST(request) {
         const body = await request.json();
         const entryType = trimOrEmpty(body?.entryType);
 
-        if (entryType === 'column') {
+        if (entryType === 'import_discovery') {
+            const selectedTableNames = Array.isArray(body?.tableNames)
+                ? body.tableNames.map((value) => trimOrEmpty(value)).filter(Boolean)
+                : [];
+
+            if (!selectedTableNames.length) {
+                return NextResponse.json(
+                    { error: 'Select at least one discovered table to import.' },
+                    { status: 400 }
+                );
+            }
+
+            const discovered = parseDiscoveredSchema(await fetchSupabaseOpenApiDocument());
+            const selectedTableSet = new Set(selectedTableNames);
+            const selectedTables = discovered.tables.filter((table) => selectedTableSet.has(table.name));
+
+            if (!selectedTables.length) {
+                return NextResponse.json(
+                    { error: 'Selected tables were not found in the discovery results.' },
+                    { status: 400 }
+                );
+            }
+
+            const registryRows = selectedTables.flatMap((table) =>
+                table.columns.map((column) => ({
+                    table_name: table.name,
+                    provider: table.provider,
+                    source: table.source,
+                    column_name: column.name,
+                    column_type: column.type,
+                    enabled: true,
+                    show_in_data_sources: true,
+                }))
+            );
+
+            const joinRows = discovered.joins
+                .filter((join) => selectedTableSet.has(join.sourceTable) && selectedTableSet.has(join.targetTable))
+                .map((join) => ({
+                    source_table: join.sourceTable,
+                    target_table: join.targetTable,
+                    source_column: join.sourceColumn,
+                    target_column: join.targetColumn,
+                    join_type: join.joinType,
+                    enabled: true,
+                }));
+
+            const registryUpsert = await admin
+                .from('chatbot_schema_registry')
+                .upsert(registryRows, { onConflict: 'table_name,column_name' });
+
+            if (registryUpsert.error) {
+                if (isMissingVisibilityColumnError(registryUpsert.error)) {
+                    const fallbackUpsert = await admin
+                        .from('chatbot_schema_registry')
+                        .upsert(
+                            registryRows.map((row) => {
+                                const nextRow = { ...row };
+                                delete nextRow.show_in_data_sources;
+                                return nextRow;
+                            }),
+                            { onConflict: 'table_name,column_name' }
+                        );
+
+                    if (fallbackUpsert.error) {
+                        throw fallbackUpsert.error;
+                    }
+                } else {
+                    throw registryUpsert.error;
+                }
+            }
+
+            if (joinRows.length) {
+                const joinsUpsert = await admin
+                    .from('chatbot_schema_joins')
+                    .upsert(joinRows, { onConflict: 'source_table,target_table,source_column,target_column' });
+
+                if (joinsUpsert.error) {
+                    throw joinsUpsert.error;
+                }
+            }
+        } else if (entryType === 'column') {
             const tableName = trimOrEmpty(body?.tableName);
             const columnName = trimOrEmpty(body?.columnName);
             const provider = trimOrNull(body?.provider) || 'supabase';
@@ -181,12 +423,36 @@ export async function POST(request) {
                         column_name: columnName,
                         column_type: columnType,
                         enabled,
+                        show_in_data_sources:
+                            Object.prototype.hasOwnProperty.call(body || {}, 'showInDataSources')
+                                ? Boolean(body?.showInDataSources)
+                                : true,
                     },
                     { onConflict: 'table_name,column_name' }
                 );
 
             if (error) {
-                throw error;
+                if (isMissingVisibilityColumnError(error)) {
+                    const fallback = await admin
+                        .from('chatbot_schema_registry')
+                        .upsert(
+                            {
+                                table_name: tableName,
+                                provider,
+                                source,
+                                column_name: columnName,
+                                column_type: columnType,
+                                enabled,
+                            },
+                            { onConflict: 'table_name,column_name' }
+                        );
+
+                    if (fallback.error) {
+                        throw fallback.error;
+                    }
+                } else {
+                    throw error;
+                }
             }
         } else if (entryType === 'join') {
             const sourceTable = trimOrEmpty(body?.sourceTable);
@@ -276,6 +542,10 @@ export async function PATCH(request) {
                 updates.enabled = Boolean(body?.enabled);
             }
 
+            if (Object.prototype.hasOwnProperty.call(body || {}, 'showInDataSources')) {
+                updates.show_in_data_sources = Boolean(body?.showInDataSources);
+            }
+
             if (Object.keys(updates).length === 0) {
                 return NextResponse.json(
                     { error: 'At least one table update is required.' },
@@ -289,6 +559,15 @@ export async function PATCH(request) {
                 .eq('table_name', tableName);
 
             if (error) {
+                if (isMissingVisibilityColumnError(error) && Object.prototype.hasOwnProperty.call(updates, 'show_in_data_sources')) {
+                    return NextResponse.json(
+                        {
+                            error: 'This workspace schema registry does not have the `show_in_data_sources` column yet. Run the new SQL migration artifact first.',
+                        },
+                        { status: 400 }
+                    );
+                }
+
                 throw error;
             }
         } else if (entryType === 'column') {

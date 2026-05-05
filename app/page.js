@@ -16,7 +16,13 @@ import { supabase } from '../lib/supabase';
 import { getSession, signOut } from '../lib/auth';
 import { useRouter } from 'next/navigation';
 import { Loader2 } from 'lucide-react';
-import { canAccessChat, canAccessDataSources, canAccessRoleDashboard, canViewChatHistory } from '@/lib/roles';
+import {
+  canAccessChat,
+  canAccessDataSources,
+  canAccessRoleDashboard,
+  canAccessSchemaRegistry,
+  canViewChatHistory,
+} from '@/lib/roles';
 
 const DEFAULT_ASSISTANT_NAME = 'AI Analyst';
 
@@ -145,16 +151,17 @@ export default function Page() {
   const canUseChat = canAccessChat(currentRole);
   const canUseHistory = canViewChatHistory(currentRole);
   const canUseDataSources = canAccessDataSources(currentRole);
-  const hasRoleManagementAccess = canAccessRoleDashboard(currentRole);
+  const canUseRoleDashboard = canAccessRoleDashboard(currentRole);
+  const canUseSchemaRegistry = canAccessSchemaRegistry(currentRole);
   const accessibleTabs = useMemo(() => ([
     ...(canUseChat ? ['Chat'] : []),
     ...(canUseDataSources ? ['DataCenter'] : []),
     ...(canUseHistory ? ['HistoryList'] : []),
-    ...(hasRoleManagementAccess ? ['SchemaRegistry'] : []),
-    ...(hasRoleManagementAccess ? ['UserRoles'] : []),
+    ...(canUseSchemaRegistry ? ['SchemaRegistry'] : []),
+    ...(canUseRoleDashboard ? ['UserRoles'] : []),
     'Settings',
     'Help',
-  ]), [canUseChat, canUseDataSources, canUseHistory, hasRoleManagementAccess]);
+  ]), [canUseChat, canUseDataSources, canUseHistory, canUseRoleDashboard, canUseSchemaRegistry]);
   const defaultWorkspaceTab = useMemo(
     () => accessibleTabs[0] || 'Help',
     [accessibleTabs]

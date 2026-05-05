@@ -8,6 +8,14 @@ const DEFAULT_PREVIEW_LIMIT = 25;
 const MAX_PREVIEW_LIMIT = 100;
 const HIDDEN_DATA_SOURCE_TABLES = new Set(['base_account']);
 
+function isVisibleInDataSources(row) {
+    if (row?.show_in_data_sources === null || row?.show_in_data_sources === undefined) {
+        return !HIDDEN_DATA_SOURCE_TABLES.has(row?.table_name || '');
+    }
+
+    return Boolean(row.show_in_data_sources);
+}
+
 export async function GET(request) {
     try {
         const supabase = await getServerSupabaseClient();
@@ -42,6 +50,27 @@ export async function GET(request) {
         }
 
         if (HIDDEN_DATA_SOURCE_TABLES.has(tableName)) {
+            return NextResponse.json({ error: 'Table not found in allowed schema.' }, { status: 404 });
+        }
+
+        let registryVisibilityRow = null;
+        try {
+            const { data, error } = await supabase
+                .from('chatbot_schema_registry')
+                .select('*')
+                .eq('table_name', tableName)
+                .eq('enabled', true)
+                .limit(1)
+                .maybeSingle();
+
+            if (!error) {
+                registryVisibilityRow = data || null;
+            }
+        } catch {
+            registryVisibilityRow = null;
+        }
+
+        if (registryVisibilityRow && !isVisibleInDataSources(registryVisibilityRow)) {
             return NextResponse.json({ error: 'Table not found in allowed schema.' }, { status: 404 });
         }
 

@@ -19,7 +19,13 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Sidebar as SidebarRoot, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarSeparator, SidebarTrigger, useSidebar } from '@/components/ui/sidebar';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { canAccessChat, canAccessDataSources, canAccessRoleDashboard, canViewChatHistory } from '@/lib/roles';
+import {
+    canAccessChat,
+    canAccessDataSources,
+    canAccessRoleDashboard,
+    canAccessSchemaRegistry,
+    canViewChatHistory,
+} from '@/lib/roles';
 
 const SIDEBAR_LOGO_SRC = '/logo/logo.png?v=20260503-1532';
 
@@ -31,7 +37,8 @@ const Sidebar = ({ activeTab, setActiveTab, onNewChat, onSelectChat, recentChats
     const canUseChat = canAccessChat(currentRole);
     const canUseDataSources = canAccessDataSources(currentRole);
     const canUseHistory = canViewChatHistory(currentRole);
-    const hasRoleManagementAccess = canAccessRoleDashboard(currentRole);
+    const canUseRoleDashboard = canAccessRoleDashboard(currentRole);
+    const canUseSchemaRegistry = canAccessSchemaRegistry(currentRole);
     const initials = displayName
         .split(' ')
         .map(part => part[0])
@@ -44,8 +51,8 @@ const Sidebar = ({ activeTab, setActiveTab, onNewChat, onSelectChat, recentChats
         ...(canUseChat ? [{ icon: MessageSquare, label: 'Chat', id: 'Chat' }] : []),
         ...(canUseDataSources ? [{ icon: Database, label: 'Data Sources', id: 'DataCenter' }] : []),
         ...(canUseHistory ? [{ icon: Clock, label: 'History', id: 'HistoryList' }] : []),
-        ...(hasRoleManagementAccess ? [{ icon: Link2, label: 'Schema', id: 'SchemaRegistry' }] : []),
-        ...(hasRoleManagementAccess ? [{ icon: ShieldCheck, label: 'User Roles', id: 'UserRoles' }] : []),
+        ...(canUseSchemaRegistry ? [{ icon: Link2, label: 'Schema', id: 'SchemaRegistry' }] : []),
+        ...(canUseRoleDashboard ? [{ icon: ShieldCheck, label: 'User Roles', id: 'UserRoles' }] : []),
     ];
 
     return (
