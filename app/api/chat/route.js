@@ -297,6 +297,15 @@ export async function POST(req) {
         if (status === 401 || status === 403 || status === 404) {
             return NextResponse.json({ error: error.message }, { status });
         }
+        if (process.env.NODE_ENV !== 'production') {
+            return NextResponse.json(
+                {
+                    error: error instanceof Error ? error.message : 'Internal server error',
+                    stack: error instanceof Error ? error.stack : null,
+                },
+                { status: 500 }
+            );
+        }
         return NextResponse.json(
             { error: 'Internal server error' },
             { status: 500 }

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { clearSchemaCache } from '@/lib/schemaRegistry';
+import { resolveTablePlanningMetadata } from '@/lib/schemaRegistry';
 import { fetchCurrentAccessProfile } from '@/lib/access';
 import { getSupabaseAdminClient } from '@/lib/supabase-admin';
 import { getSupabaseEnv } from '@/lib/supabase-env';
@@ -25,6 +26,16 @@ function isMissingVisibilityColumnError(error) {
     return (
         error?.code === '42703' ||
         message.includes('show_in_data_sources')
+    );
+}
+
+function isMissingPlannerMetadataColumnError(error) {
+    const message = String(error?.message || '').toLowerCase();
+
+    return (
+        error?.code === '42703' ||
+        message.includes('allow_in_planner') ||
+        message.includes('table_kind')
     );
 }
 
@@ -196,14 +207,13 @@ function groupRegistryRows(rows = []) {
                 name: row.table_name,
                 provider: row.provider || 'supabase',
                 source: row.source || row.table_name,
-                showInDataSources:
-                    row.show_in_data_sources === null || row.show_in_data_sources === undefined
-                        ? !HIDDEN_DATA_SOURCE_TABLES.has(row.table_name)
-                        : Boolean(row.show_in_data_sources),
                 totalColumns: 0,
                 enabledColumns: 0,
                 isEnabled: false,
                 columns: [],
+                rawShowInDataSources: row.show_in_data_sources,
+                rawAllowInPlanner: row.allow_in_planner,
+                rawTableKind: row.table_kind,
             });
         }
 
@@ -222,6 +232,17 @@ function groupRegistryRows(rows = []) {
     return Array.from(grouped.values())
         .map((table) => ({
             ...table,
+            ...resolveTablePlanningMetadata({
+                tableName: table.name,
+                source: table.source,
+                columns: table.columns,
+                tableKind: table.rawTableKind,
+                plannerEnabled: table.rawAllowInPlanner,
+            }),
+            showInDataSources:
+                table.rawShowInDataSources === null || table.rawShowInDataSources === undefined
+                    ? !HIDDEN_DATA_SOURCE_TABLES.has(table.name)
+                    : Boolean(table.rawShowInDataSources),
             columns: [...table.columns].sort((left, right) => left.name.localeCompare(right.name)),
         }))
         .sort((left, right) => left.name.localeCompare(right.name));
@@ -342,15 +363,25 @@ export async function POST(request) {
             }
 
             const registryRows = selectedTables.flatMap((table) =>
-                table.columns.map((column) => ({
-                    table_name: table.name,
-                    provider: table.provider,
-                    source: table.source,
-                    column_name: column.name,
-                    column_type: column.type,
-                    enabled: true,
-                    show_in_data_sources: true,
-                }))
+                table.columns.map((column) => {
+                    const planningMetadata = resolveTablePlanningMetadata({
+                        tableName: table.name,
+                        source: table.source,
+                        columns: table.columns,
+                    });
+
+                    return {
+                        table_name: table.name,
+                        provider: table.provider,
+                        source: table.source,
+                        column_name: column.name,
+                        column_type: column.type,
+                        enabled: true,
+                        show_in_data_sources: true,
+                        allow_in_planner: planningMetadata.plannerEnabled,
+                        table_kind: planningMetadata.tableKind,
+                    };
+                })
             );
 
             const joinRows = discovered.joins
@@ -376,6 +407,24 @@ export async function POST(request) {
                             registryRows.map((row) => {
                                 const nextRow = { ...row };
                                 delete nextRow.show_in_data_sources;
+                                delete nextRow.allow_in_planner;
+                                delete nextRow.table_kind;
+                                return nextRow;
+                            }),
+                            { onConflict: 'table_name,column_name' }
+                        );
+
+                    if (fallbackUpsert.error) {
+                        throw fallbackUpsert.error;
+                    }
+                } else if (isMissingPlannerMetadataColumnError(registryUpsert.error)) {
+                    const fallbackUpsert = await admin
+                        .from('chatbot_schema_registry')
+                        .upsert(
+                            registryRows.map((row) => {
+                                const nextRow = { ...row };
+                                delete nextRow.allow_in_planner;
+                                delete nextRow.table_kind;
                                 return nextRow;
                             }),
                             { onConflict: 'table_name,column_name' }
@@ -416,7 +465,14 @@ export async function POST(request) {
             const { error } = await admin
                 .from('chatbot_schema_registry')
                 .upsert(
-                    {
+                    (() => {
+                        const planningMetadata = resolveTablePlanningMetadata({
+                            tableName,
+                            source,
+                            columns: [{ name: columnName }],
+                        });
+
+                        return {
                         table_name: tableName,
                         provider,
                         source,
@@ -427,12 +483,19 @@ export async function POST(request) {
                             Object.prototype.hasOwnProperty.call(body || {}, 'showInDataSources')
                                 ? Boolean(body?.showInDataSources)
                                 : true,
-                    },
+                            allow_in_planner:
+                                Object.prototype.hasOwnProperty.call(body || {}, 'allowInPlanner')
+                                    ? Boolean(body?.allowInPlanner)
+                                    : planningMetadata.plannerEnabled,
+                            table_kind:
+                                trimOrNull(body?.tableKind) || planningMetadata.tableKind,
+                        };
+                    })(),
                     { onConflict: 'table_name,column_name' }
                 );
 
             if (error) {
-                if (isMissingVisibilityColumnError(error)) {
+                if (isMissingVisibilityColumnError(error) || isMissingPlannerMetadataColumnError(error)) {
                     const fallback = await admin
                         .from('chatbot_schema_registry')
                         .upsert(
@@ -546,6 +609,14 @@ export async function PATCH(request) {
                 updates.show_in_data_sources = Boolean(body?.showInDataSources);
             }
 
+            if (Object.prototype.hasOwnProperty.call(body || {}, 'allowInPlanner')) {
+                updates.allow_in_planner = Boolean(body?.allowInPlanner);
+            }
+
+            if (Object.prototype.hasOwnProperty.call(body || {}, 'tableKind')) {
+                updates.table_kind = trimOrNull(body?.tableKind) || 'entity';
+            }
+
             if (Object.keys(updates).length === 0) {
                 return NextResponse.json(
                     { error: 'At least one table update is required.' },
@@ -563,6 +634,21 @@ export async function PATCH(request) {
                     return NextResponse.json(
                         {
                             error: 'This workspace schema registry does not have the `show_in_data_sources` column yet. Run the new SQL migration artifact first.',
+                        },
+                        { status: 400 }
+                    );
+                }
+
+                if (
+                    isMissingPlannerMetadataColumnError(error) &&
+                    (
+                        Object.prototype.hasOwnProperty.call(updates, 'allow_in_planner') ||
+                        Object.prototype.hasOwnProperty.call(updates, 'table_kind')
+                    )
+                ) {
+                    return NextResponse.json(
+                        {
+                            error: 'This workspace schema registry does not have the planner metadata columns yet. Run the new SQL migration artifact first.',
                         },
                         { status: 400 }
                     );

@@ -29,6 +29,7 @@ import { canAccessSchemaRegistry } from '@/lib/roles';
 const COLUMN_TYPE_OPTIONS = ['string', 'number', 'boolean', 'date', 'unknown'];
 const PROVIDER_OPTIONS = ['supabase', 'mysql'];
 const JOIN_TYPE_OPTIONS = ['inner', 'left'];
+const TABLE_KIND_OPTIONS = ['entity', 'relationship', 'lookup', 'summary', 'sensitive', 'system', 'unknown'];
 
 function isPotentialScopeColumn(columnName) {
     return ['school_id', 'school_name_id', 'cluster_id'].includes(String(columnName || '').toLowerCase());
@@ -118,6 +119,7 @@ const SchemaRegistryView = ({ currentRole }) => {
                 accumulator[table.name] = {
                     provider: table.provider || 'supabase',
                     source: table.source || table.name,
+                    tableKind: table.tableKind || 'entity',
                 };
                 return accumulator;
             }, {})
@@ -331,6 +333,7 @@ const SchemaRegistryView = ({ currentRole }) => {
                 tableName,
                 provider: draft.provider,
                 source: draft.source,
+                tableKind: draft.tableKind,
             },
             successMessage: `Updated metadata for ${tableName}.`,
             savingToken: `table-meta:${tableName}`,
@@ -362,6 +365,20 @@ const SchemaRegistryView = ({ currentRole }) => {
             },
             successMessage: `${showInDataSources ? 'Showed' : 'Hid'} ${tableName} in the Data Sources tab.`,
             savingToken: `table-data-sources:${tableName}`,
+        });
+    };
+
+    const handleTogglePlannerVisibility = async (tableName, allowInPlanner) => {
+        await runMutation({
+            url: '/api/admin/schema-registry',
+            method: 'PATCH',
+            body: {
+                entryType: 'table',
+                tableName,
+                allowInPlanner,
+            },
+            successMessage: `${allowInPlanner ? 'Included' : 'Excluded'} ${tableName} in the planner schema context.`,
+            savingToken: `table-planner:${tableName}`,
         });
     };
 
@@ -406,6 +423,8 @@ const SchemaRegistryView = ({ currentRole }) => {
                 columnName,
                 columnType: draft.columnType,
                 enabled: draft.enabled,
+                allowInPlanner: table.plannerEnabled !== false,
+                tableKind: table.tableKind || 'entity',
             },
             successMessage: `Added ${tableName}.${columnName}.`,
             savingToken: `column-create:${tableName}`,
@@ -798,6 +817,7 @@ const SchemaRegistryView = ({ currentRole }) => {
                                 const tableDraft = tableDrafts[table.name] || {
                                     provider: table.provider || 'supabase',
                                     source: table.source || table.name,
+                                    tableKind: table.tableKind || 'entity',
                                 };
                                 const columnDraft = newColumnDrafts[table.name] || createEmptyColumnDraft();
                                 const tableSaving = savingKey.startsWith(`table-${table.name}`) || savingKey.includes(`:${table.name}`);
@@ -824,7 +844,16 @@ const SchemaRegistryView = ({ currentRole }) => {
                                                 </p>
                                             </div>
 
-                                            <div className="flex items-center gap-3">
+                                                <div className="flex items-center gap-3">
+                                                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                                    <span>Allow in Planner</span>
+                                                    <Switch
+                                                        checked={table.plannerEnabled !== false}
+                                                        onCheckedChange={(checked) => handleTogglePlannerVisibility(table.name, checked === true)}
+                                                        disabled={Boolean(savingKey)}
+                                                        aria-label={`Allow ${table.name} in planner`}
+                                                    />
+                                                </div>
                                                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
                                                     <span>Show in Data Sources</span>
                                                     <Switch
@@ -857,7 +886,7 @@ const SchemaRegistryView = ({ currentRole }) => {
                                         </div>
 
                                         <div className="space-y-4 p-4">
-                                            <div className="grid gap-3 md:grid-cols-[minmax(120px,0.7fr)_minmax(220px,1fr)_auto]">
+                                            <div className="grid gap-3 md:grid-cols-[minmax(120px,0.7fr)_minmax(220px,1fr)_minmax(160px,0.9fr)_auto]">
                                                 <Select
                                                     value={tableDraft.provider}
                                                     onValueChange={(value) =>
@@ -895,6 +924,29 @@ const SchemaRegistryView = ({ currentRole }) => {
                                                     placeholder="Source table name"
                                                     aria-label={`Source for ${table.name}`}
                                                 />
+                                                <Select
+                                                    value={tableDraft.tableKind}
+                                                    onValueChange={(value) =>
+                                                        setTableDrafts((current) => ({
+                                                            ...current,
+                                                            [table.name]: {
+                                                                ...current[table.name],
+                                                                tableKind: value,
+                                                            },
+                                                        }))
+                                                    }
+                                                >
+                                                    <SelectTrigger aria-label={`Table kind for ${table.name}`}>
+                                                        <SelectValue placeholder="Table kind" />
+                                                    </SelectTrigger>
+                                                    <SelectContent>
+                                                        {TABLE_KIND_OPTIONS.map((option) => (
+                                                            <SelectItem key={option} value={option}>
+                                                                {option}
+                                                            </SelectItem>
+                                                        ))}
+                                                    </SelectContent>
+                                                </Select>
                                                 <Button
                                                     type="button"
                                                     variant="outline"
@@ -906,6 +958,9 @@ const SchemaRegistryView = ({ currentRole }) => {
                                                     Save metadata
                                                 </Button>
                                             </div>
+                                            <p className="text-xs text-muted-foreground">
+                                                Table kind helps the planner prefer row-level entity tables over summary tables when users ask filtered questions.
+                                            </p>
 
                                             <div className="overflow-hidden rounded-xl border border-border">
                                                 <Table>
