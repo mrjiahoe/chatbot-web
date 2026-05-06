@@ -1,5 +1,5 @@
 import React, { useState, useRef, useLayoutEffect, useEffect } from 'react';
-import { Send, FileText, Bot, User, Plus, ArrowDown, Clock, X, Database, Check, Loader2, Table } from 'lucide-react';
+import { Send, FileText, Bot, User, Plus, ArrowDown, Clock, X, Database, Check, Loader2, Table, Square } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
@@ -77,8 +77,13 @@ const ChatArea = ({
     const [selectedTables, setSelectedTables] = useState([]);
     const [isMenuOpen, setIsMenuOpen] = useState(false);
     const [isFetchingTables, setIsFetchingTables] = useState(false);
+    const abortControllerRef = useRef(null);
     const canUseChatFeature = canAccessChat(currentRole);
     const canUseDataContext = canUseChatDataContext(currentRole);
+
+    useEffect(() => () => {
+        abortControllerRef.current?.abort();
+    }, []);
 
     useEffect(() => {
         if (isMenuOpen && canUseDataContext) {
@@ -177,6 +182,9 @@ const ChatArea = ({
         setError(null);
 
         try {
+            const abortController = new AbortController();
+            abortControllerRef.current = abortController;
+
             // Convert messages to the format expected by the backend
             const history = messages.map(msg => ({
                 role: msg.sender === 'user' ? 'user' : 'model',
@@ -195,6 +203,7 @@ const ChatArea = ({
                     conversationId: typeof activeChatId === 'string' ? activeChatId : undefined,
                     aiConfig,
                 }),
+                signal: abortController.signal,
             });
 
             if (!response.ok) {
@@ -224,8 +233,10 @@ const ChatArea = ({
             }
 
             setMessages(prev => [...prev, botResponse]);
-            setIsLoading(false);
         } catch (err) {
+            if (err?.name === 'AbortError') {
+                return;
+            }
             console.error('Chat error:', err);
             const errorMessage = {
                 id: Date.now(),
@@ -235,8 +246,16 @@ const ChatArea = ({
                 timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
             };
             setMessages(prev => [...prev, errorMessage]);
+        } finally {
+            abortControllerRef.current = null;
             setIsLoading(false);
         }
+    };
+
+    const handleStopMessage = () => {
+        abortControllerRef.current?.abort();
+        abortControllerRef.current = null;
+        setIsLoading(false);
     };
 
     if (!canUseChatFeature) {
@@ -603,14 +622,27 @@ const ChatArea = ({
                             className="h-11 flex-1 border-none bg-transparent px-0 text-[15px] text-foreground shadow-none placeholder:text-muted-foreground focus-visible:ring-0"
                             autoFocus
                         />
-                        <Button
-                            type="submit"
-                            disabled={!inputValue.trim()}
-                            size="icon"
-                            className="shrink-0 rounded-full"
-                        >
-                            <Send size={18} className={inputValue.trim() ? "translate-x-0.5 -translate-y-0.5" : ""} />
-                        </Button>
+                        {isLoading ? (
+                            <Button
+                                type="button"
+                                onClick={handleStopMessage}
+                                size="icon"
+                                variant="secondary"
+                                className="shrink-0 rounded-full"
+                                aria-label="Stop response"
+                            >
+                                <Square size={16} className="fill-current" />
+                            </Button>
+                        ) : (
+                            <Button
+                                type="submit"
+                                disabled={!inputValue.trim()}
+                                size="icon"
+                                className="shrink-0 rounded-full"
+                            >
+                                <Send size={18} className={inputValue.trim() ? "translate-x-0.5 -translate-y-0.5" : ""} />
+                            </Button>
+                        )}
                     </form>
                     <div className="text-center mt-3 text-[11px] text-zinc-400 dark:text-zinc-500 font-medium tracking-wide">
                         AI CAN MAKE MISTAKES. VERIFY IMPORTANT DATA.
