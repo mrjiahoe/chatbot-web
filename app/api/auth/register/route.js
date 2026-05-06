@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { getSupabaseAdminClient } from '@/lib/supabase-admin';
 import { getSupabaseEnv } from '@/lib/supabase-env';
+import { ensureUsernameAvailable, normalizeUsername } from '@/lib/usernameAvailability';
 
 const registerSchema = z.object({
     email: z.string().trim().email('A valid email is required.'),
@@ -20,49 +21,6 @@ const registerSchema = z.object({
 function firstValidationMessage(zodError) {
     const issue = zodError.issues[0];
     return issue?.message ?? 'Invalid registration data.';
-}
-
-function isBaseAccountUnavailable(error) {
-    const code = error?.code;
-    const message = error?.message || '';
-
-    return (
-        code === '42P01' ||
-        code === 'PGRST205' ||
-        code === 'PGRST116' ||
-        code === '42703' ||
-        message.includes('base_account') ||
-        message.includes('relation') ||
-        message.includes('schema cache')
-    );
-}
-
-async function ensureUsernameAvailable(admin, username) {
-    const { data: baseAccountUser, error: baseAccountError } = await admin
-        .from('base_account')
-        .select('username')
-        .eq('username', username)
-        .maybeSingle();
-
-    if (baseAccountError && !isBaseAccountUnavailable(baseAccountError)) {
-        throw baseAccountError;
-    }
-
-    if (baseAccountUser) {
-        return false;
-    }
-
-    const { data: profileUser, error: profileError } = await admin
-        .from('profiles')
-        .select('id')
-        .eq('username', username)
-        .maybeSingle();
-
-    if (profileError && profileError.code !== 'PGRST116') {
-        throw profileError;
-    }
-
-    return !profileUser;
 }
 
 async function createProfileForEmailSignup({ admin, userId, username, firstName, lastName }) {
@@ -99,7 +57,7 @@ export async function POST(request) {
         }
 
         const email = parsed.data.email.trim().toLowerCase();
-        const username = parsed.data.username.trim().toLowerCase();
+        const username = normalizeUsername(parsed.data.username);
         const firstName = parsed.data.firstName.trim();
         const lastName = parsed.data.lastName.trim();
         const admin = getSupabaseAdminClient();

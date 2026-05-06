@@ -60,47 +60,49 @@ function OnboardingPageContent() {
 
     useEffect(() => {
         if (!username || username.length < 3) {
+            setIsChecking(false);
             setUsernameStatus(null);
             return;
         }
 
+        const controller = new AbortController();
         const timer = setTimeout(async () => {
             setIsChecking(true);
-            const { data: accountData, error: accountError } = await supabase
-                .from('base_account')
-                .select('username')
-                .eq('username', username.toLowerCase())
-                .maybeSingle();
+            const normalizedUsername = username.trim().toLowerCase();
 
-            if (accountError && accountError.code !== 'PGRST116') {
-                console.error(accountError);
-                setIsChecking(false);
-                return;
+            try {
+                const response = await fetch(
+                    `/api/auth/username-availability?username=${encodeURIComponent(normalizedUsername)}`,
+                    {
+                        cache: 'no-store',
+                        signal: controller.signal,
+                    }
+                );
+                const payload = await response.json().catch(() => ({}));
+
+                if (!response.ok) {
+                    throw new Error(payload?.error || 'Unable to check username availability.');
+                }
+
+                setUsernameStatus(payload?.available ? 'available' : 'taken');
+            } catch (checkError) {
+                if (checkError?.name === 'AbortError') {
+                    return;
+                }
+
+                console.error(checkError);
+                setUsernameStatus(null);
+            } finally {
+                if (!controller.signal.aborted) {
+                    setIsChecking(false);
+                }
             }
-
-            if (accountData) {
-                setUsernameStatus('taken');
-                setIsChecking(false);
-                return;
-            }
-
-            const { data, error } = await supabase
-                .from('profiles')
-                .select('username')
-                .eq('username', username.toLowerCase())
-                .maybeSingle();
-
-            if (error) {
-                console.error(error);
-            } else if (data) {
-                setUsernameStatus('taken');
-            } else {
-                setUsernameStatus('available');
-            }
-            setIsChecking(false);
         }, 500);
 
-        return () => clearTimeout(timer);
+        return () => {
+            clearTimeout(timer);
+            controller.abort();
+        };
     }, [username]);
 
     const handleSubmit = async (e) => {

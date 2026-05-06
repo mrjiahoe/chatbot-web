@@ -1050,17 +1050,6 @@ const UserRolesView = ({ currentRole }) => {
                             Review users from Supabase Auth and manage RBAC entirely through `base_account` access flags. Teacher accounts are single-school scoped through `school_name_id`.
                         </p> */}
                     </div>
-
-                    <Button
-                        type="button"
-                        variant="outline"
-                        className="gap-2"
-                        onClick={() => loadUsers({ silent: true })}
-                        disabled={isRefreshing || isLoading}
-                    >
-                        {isRefreshing ? <Loader2 className="size-4 animate-spin" /> : <RefreshCcw className="size-4" />}
-                        Refresh
-                    </Button>
                 </div>
 
                 {banner.text && (
@@ -1099,9 +1088,22 @@ const UserRolesView = ({ currentRole }) => {
                                     Linked users are managed with boolean access flags. Unlinked users stay inactive until they have a `base_account` record, and teachers must have exactly one school assignment.
                                 </CardDescription> */}
                             </div>
-                            <div className="inline-flex items-center gap-2 rounded-full border border-border bg-background px-3 py-1 text-xs font-medium text-muted-foreground">
-                                <Users className="size-3.5" />
-                                {filteredUsers.length} of {sortedUsers.length} users
+                            <div className="flex flex-wrap items-center gap-2">
+                                <div className="inline-flex items-center gap-2 rounded-full border border-border bg-background px-3 py-1 text-xs font-medium text-muted-foreground">
+                                    <Users className="size-3.5" />
+                                    {filteredUsers.length} of {sortedUsers.length} users
+                                </div>
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    className="gap-2 border-border/80 transition-colors hover:border-primary/40 hover:bg-primary/10 hover:text-primary"
+                                    onClick={() => loadUsers({ silent: true })}
+                                    disabled={isRefreshing || isLoading}
+                                >
+                                    {isRefreshing ? <Loader2 className="size-4 animate-spin" /> : <RefreshCcw className="size-4" />}
+                                    Refresh
+                                </Button>
                             </div>
                         </div>
                     </CardHeader>

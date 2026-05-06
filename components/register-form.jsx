@@ -26,8 +26,6 @@ import {
 } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import { signUp, signInWithGoogle } from '../lib/auth';
-import { supabase } from '../lib/supabase';
-
 export function RegisterForm() {
     const [email, setEmail] = useState('');
     const [username, setUsername] = useState('');
@@ -44,50 +42,49 @@ export function RegisterForm() {
 
     useEffect(() => {
         if (!username || username.length < 3) {
+            setIsCheckingUsername(false);
             setUsernameStatus(null);
             return;
         }
 
+        const controller = new AbortController();
         const timer = setTimeout(async () => {
             setIsCheckingUsername(true);
             const normalizedUsername = username.trim().toLowerCase();
 
-            const { data: baseAccountUser, error: baseAccountError } = await supabase
-                .from('base_account')
-                .select('username')
-                .eq('username', normalizedUsername)
-                .maybeSingle();
+            try {
+                const response = await fetch(
+                    `/api/auth/username-availability?username=${encodeURIComponent(normalizedUsername)}`,
+                    {
+                        cache: 'no-store',
+                        signal: controller.signal,
+                    }
+                );
+                const payload = await response.json().catch(() => ({}));
 
-            if (baseAccountError && baseAccountError.code !== 'PGRST116') {
-                console.error(baseAccountError);
-                setIsCheckingUsername(false);
-                return;
+                if (!response.ok) {
+                    throw new Error(payload?.error || 'Unable to check username availability.');
+                }
+
+                setUsernameStatus(payload?.available ? 'available' : 'taken');
+            } catch (checkError) {
+                if (checkError?.name === 'AbortError') {
+                    return;
+                }
+
+                console.error(checkError);
+                setUsernameStatus(null);
+            } finally {
+                if (!controller.signal.aborted) {
+                    setIsCheckingUsername(false);
+                }
             }
-
-            if (baseAccountUser) {
-                setUsernameStatus('taken');
-                setIsCheckingUsername(false);
-                return;
-            }
-
-            const { data: profileUser, error: profileError } = await supabase
-                .from('profiles')
-                .select('username')
-                .eq('username', normalizedUsername)
-                .maybeSingle();
-
-            if (profileError) {
-                console.error(profileError);
-            } else if (profileUser) {
-                setUsernameStatus('taken');
-            } else {
-                setUsernameStatus('available');
-            }
-
-            setIsCheckingUsername(false);
         }, 400);
 
-        return () => clearTimeout(timer);
+        return () => {
+            clearTimeout(timer);
+            controller.abort();
+        };
     }, [username]);
 
     const handleRegister = async (event) => {

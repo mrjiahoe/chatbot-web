@@ -555,17 +555,6 @@ const SchemaRegistryView = ({ currentRole }) => {
                             Manage which tables, columns, and joins the chatbot is allowed to use from the Supabase schema registry.
                         </p>
                     </div>
-
-                    <Button
-                        type="button"
-                        variant="outline"
-                        className="gap-2"
-                        onClick={() => loadRegistry({ silent: true })}
-                        disabled={isRefreshing || isLoading}
-                    >
-                        {isRefreshing ? <Loader2 className="size-4 animate-spin" /> : <RefreshCcw className="size-4" />}
-                        Refresh
-                    </Button>
                 </div>
 
                 <div className="rounded-lg border border-border bg-card px-4 py-3 text-sm text-muted-foreground">
@@ -759,13 +748,28 @@ const SchemaRegistryView = ({ currentRole }) => {
 
                 <Card>
                     <CardHeader className="border-b border-border bg-muted/20">
-                        <CardTitle className="flex items-center gap-2">
-                            <Database className="size-5 text-primary" />
-                            Approved Tables
-                        </CardTitle>
-                        <CardDescription>
-                            Enable or disable tables, tune their metadata, and control column visibility for structured analytics.
-                        </CardDescription>
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+                            <div className="space-y-1">
+                                <CardTitle className="flex items-center gap-2">
+                                    <Database className="size-5 text-primary" />
+                                    Approved Tables
+                                </CardTitle>
+                                <CardDescription>
+                                    Enable or disable tables, tune their metadata, and control column visibility for structured analytics.
+                                </CardDescription>
+                            </div>
+                            <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                className="gap-2 self-start border-border/80 transition-colors hover:border-primary/40 hover:bg-primary/10 hover:text-primary sm:self-auto"
+                                onClick={() => loadRegistry({ silent: true })}
+                                disabled={isRefreshing || isLoading}
+                            >
+                                {isRefreshing ? <Loader2 className="size-4 animate-spin" /> : <RefreshCcw className="size-4" />}
+                                Refresh
+                            </Button>
+                        </div>
                     </CardHeader>
                     <CardContent className="space-y-4 p-4 md:p-6">
                         {isLoading ? (
